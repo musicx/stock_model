@@ -12,7 +12,7 @@ train = []
 test = []
 for stock in stocks.code.tolist():
     try:
-        candles = qa.QA_fetch_stock_day_adv(stock, start='2014-01-01', end='2018-04-25')
+        candles = qa.QA_fetch_stock_day_adv(stock, start='2015-01-01', end='2018-04-25')
         cdata = candles.data.reset_index(level=1, drop=True).loc[:, pvars]
         data = pd.concat([cdata - cdata.diff(x) for x in range(periods)], axis=1).apply(lambda x: x / cdata.close) - 1
         cdata2 = candles.data.reset_index(level=1, drop=True).loc[:, vvars]
@@ -38,5 +38,5 @@ for stock in stocks.code.tolist():
 train = pd.concat(train, axis=0).reset_index()
 test = pd.concat(test, axis=0).reset_index()
 
-train.to_csv('train_14_17.csv', index=False)
-test.to_csv('test_14_17.csv', index=False)
+train.to_csv('..\\data\\train_15_17.csv', index=False)
+test.to_csv('..\\data\\test_15_17.csv', index=False)

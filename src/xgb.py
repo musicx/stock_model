@@ -7,12 +7,12 @@ from sklearn.cross_validation import train_test_split
 import time
 start_time = time.time()
 
-tt = pd.read_csv("train_14_17.csv", nrows=10)
+tt = pd.read_csv("..\\data\\train_15_17.csv", nrows=10)
 nvars = tt.shape[1] - 3
 names = ['date'] + ["v{}".format(x) for x in range(nvars)] + ['label', 'code']
 
 #读入数据
-train = pd.read_csv("train_14_17.csv", skiprows=1, names=names)
+train = pd.read_csv("..\\data\\train_15_17.csv", skiprows=1, names=names)
 
 params = {
     'booster': 'gbtree',
@@ -53,18 +53,18 @@ watchlist = [(xgb_train, 'train'), (xgb_val, 'val')]
 # early_stopping_rounds 当设置的迭代次数较大时，early_stopping_rounds 可在一定的迭代次数内准确率没有提升就停止训练
 model = xgb.train(params, xgb_train, num_rounds, watchlist, early_stopping_rounds=20)
 
-model.save_model('./model/xgb.model') # 用于存储训练出的模型
+model.save_model('..\\model\\xgb.model') # 用于存储训练出的模型
 print("best best_ntree_limit", model.best_ntree_limit)
 
 print("跑到这里了model.predict")
-tests = pd.read_csv("test_14_17.csv", skiprows=1, names=names)
-xgb_test = xgb.DMatrix(tests)
+tests = pd.read_csv("..\\data\\test_15_17.csv", skiprows=1, names=names)
+xgb_test = xgb.DMatrix(tests.drop(['label', 'date', 'code'], axis=1))
 preds = model.predict(xgb_test, ntree_limit=model.best_ntree_limit)
 
 tests = tests.loc[:, ['date', 'code', 'label']]
 tests['pred'] = pd.Series(preds)
 # np.savetxt('xgb_submission.csv', np.c_[range(1,len(tests)+1), preds], delimiter=',', header='ImageId,Label', comments='', fmt='%d')
-tests.to_csv('xgb_pred.csv')
+tests.to_csv('..\\data\\xgb_pred.csv', index=False)
 
 #输出运行时长
 cost_time = time.time()-start_time
