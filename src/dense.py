@@ -15,7 +15,7 @@ names = ['date'] + ["v{}".format(x) for x in range(nvars)] + ['label', 'code']
 # names = ['date'] + ["v{}".format(x) for x in range(nvars)] + ['p10', 'p0', 'n0', 'n10', 'code']
 
 #读入数据
-train = pd.read_csv("../data/train_16_17.csv", skiprows=1, names=names, nrows=100000)
+train = pd.read_csv("../data/train_16_17.csv", skiprows=1, names=names, nrows=10000)
 
 train_xy, val = train_test_split(train, test_size=0.2, random_state=999)
 # random_state is of big influence for val-auc
@@ -24,7 +24,7 @@ train_X = np.asarray(train_xy.drop(['label', 'date', 'code'], axis=1))
 val_y = np.asarray(val.label)
 val_X = np.asarray(val.drop(['label', 'date', 'code'], axis=1))
 
-tests = pd.read_csv("../data/test_14_17.csv", skiprows=1, names=names)
+tests = pd.read_csv("../data/test_16_17.csv", skiprows=1, names=names)
 test_X = np.asarray(tests.drop(['label', 'date', 'code'], axis=1))
 test_y = np.asarray(tests.label)
 
@@ -42,7 +42,7 @@ network = tl.layers.DenseLayer(network, n_units=4, act=tf.identity, name='output
 
 y = network.outputs
 cost = tl.cost.cross_entropy(y, y_, name='cost')
-correct = tf.equal(tf.arg_max(y), y_)
+correct = tf.equal(tf.arg_max(y, 1), y_)
 acc = tf.reduce_mean(tf.cast(correct, tf.float32))
 y_op = tf.arg_max(tf.nn.softmax(y), 1)
 
@@ -69,13 +69,9 @@ tl.utils.test(sess, network, acc, test_X, test_y, x, y_, batch_size=None, cost=c
 tl.files.save_npz(network.all_params, name='tl_dense.npz')
 sess.close()
 
-# print("跑到这里了model.predict")
-xgb_test = xgb.DMatrix(tests)
-preds = model.predict(xgb_test, ntree_limit=model.best_ntree_limit)
-
-tests = tests.loc[:, ['date', 'code', 'label']]
-tests['pred'] = pd.Series(preds)
-tests.to_csv('../data/dense_pred.csv')
+# tests = tests.loc[:, ['date', 'code', 'label']]
+# tests['pred'] = pd.Series(preds)
+# tests.to_csv('../data/dense_pred.csv')
 
 #输出运行时长
 cost_time = time.time()-start_time
