@@ -18,7 +18,9 @@ for stock in stocks.code.tolist():
         cdata2 = candles.data.reset_index(level=1, drop=True).loc[:, vvars]
         data2 = pd.concat([cdata2 - cdata2.diff(x) for x in range(periods)], axis=1).apply(lambda x: x / cdata2.vol)
         change = (cdata - cdata.diff(-3)).close / (cdata - cdata.diff(-1)).open - 1
-        label = (change > 0.1) * 1
+        # label = pd.concat([(change > 0.1), (change <= 0.1) & (change > 0),
+        #                    (change <= 0) & (change > -0.1), (change <= -0.1)], axis=1) * 1
+        label = (change > 0.1) * 1 + (change > 0) * 1 + (change > -0.1) * 1
 
         all_data = pd.concat([data, data2, label], axis=1).dropna()
         print('stock {} have {} examples, left {} examples'.format(stock, data.shape[0], all_data.shape[0]))
