@@ -9,13 +9,13 @@ import tensorlayer as tl
 import time
 start_time = time.time()
 
-tt = pd.read_csv("../data/train_16_17.csv", nrows=10)
+tt = pd.read_csv("../data/train_15_17.csv", nrows=10)
 nvars = tt.shape[1] - 3
 names = ['date'] + ["v{}".format(x) for x in range(nvars)] + ['label', 'code']
 # names = ['date'] + ["v{}".format(x) for x in range(nvars)] + ['p10', 'p0', 'n0', 'n10', 'code']
 
 #读入数据
-train = pd.read_csv("../data/train_16_17.csv", skiprows=1, names=names, nrows=10000)
+train = pd.read_csv("../data/train_15_17.csv", skiprows=1, names=names)
 
 train_xy, val = train_test_split(train, test_size=0.2, random_state=999)
 # random_state is of big influence for val-auc
@@ -24,7 +24,7 @@ train_X = np.asarray(train_xy.drop(['label', 'date', 'code'], axis=1))
 val_y = np.asarray(val.label)
 val_X = np.asarray(val.drop(['label', 'date', 'code'], axis=1))
 
-tests = pd.read_csv("../data/test_16_17.csv", skiprows=1, names=names)
+tests = pd.read_csv("../data/test_15_17.csv", skiprows=1, names=names)
 test_X = np.asarray(tests.drop(['label', 'date', 'code'], axis=1))
 test_y = np.asarray(tests.label)
 
@@ -61,7 +61,7 @@ network.print_layers()
 network.print_params()
 
 tl.utils.fit(sess, network, train_op, cost, train_X, train_y, x, y_,
-             acc=acc, batch_size=128, n_epoch=200, print_freq=10,
+             acc=acc, batch_size=128, n_epoch=2000, print_freq=10,
              X_val=val_X, y_val=val_y, eval_train=False, tensorboard=True)
 
 tl.utils.test(sess, network, acc, test_X, test_y, x, y_, batch_size=None, cost=cost)
