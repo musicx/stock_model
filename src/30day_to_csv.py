@@ -40,5 +40,5 @@ for stock in stocks.code.tolist():
 train = pd.concat(train, axis=0).reset_index()
 test = pd.concat(test, axis=0).reset_index()
 
-train.to_csv('..\\data\\train_15_17.csv', index=False)
-test.to_csv('..\\data\\test_15_17.csv', index=False)
+train.to_csv('../data/train_14_17.csv', index=False)
+test.to_csv('../data/test_14_17.csv', index=False)
