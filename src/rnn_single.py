@@ -2,20 +2,45 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import matplotlib.pyplot as plt
-import os, pickle
+import os
 
-HIDDEN_SIZE = 64                            # LSTM中隐藏节点的个数。
-NUM_LAYERS = 2                              # LSTM的层数。
+HIDDEN_SIZE = 128                            # LSTM中隐藏节点的个数。
+NUM_LAYERS = 1                              # LSTM的层数。
 TIMESTEPS = 30                              # 循环神经网络的训练序列长度。
 TRAINING_STEPS = 5000                      # 训练轮数。
-BATCH_SIZE = 16                             # batch大小。
+BATCH_SIZE = 32                             # batch大小。
 
 pvars = ['open', 'close', 'high', 'low']
 
+INDEX = True
+INTERVAL = 240 // 5
+
 def generate_data(stock):
-    if os.path.exists("data_000001.npy"):
-        data = np.load('data_000001.npy')
-        label = np.load('label_000001.npy')
+    if os.path.exists("idata_000001.npy"):
+        data = np.load('idata_000001.npy')
+        label = np.load('ilabel_000001.npy')
+    elif INDEX:
+        import QUANTAXIS as qa
+        candles = qa.QA_fetch_index_min('000001', start='2015-01-01', end='2018-05-08', format='pandas', frequence='5min')
+        days = []
+        for x in range(candles.shape[0] // INTERVAL):
+            day = candles.ix[x*INTERVAL : (x+1)*INTERVAL, ['open', 'close']]
+            days.append(np.insert(day.close.values, 0, day.open[0]))
+        cdata = pd.DataFrame(days)
+
+        pdata = []
+        plabel = []
+        for x in range(cdata.shape[0]-TIMESTEPS):
+            # mid.append(cdata.iloc[x: x+TIMESTEPS, :])
+            day = cdata.iloc[x: x+TIMESTEPS, :] / cdata.iloc[x+TIMESTEPS-1, -1] - 1
+            pdata.append(day.values.flatten())
+            plabel.append(cdata.iloc[x+TIMESTEPS, -1] / cdata.iloc[x+TIMESTEPS-1, -1] - 1)
+        data = np.asarray(pdata, dtype=np.float32)
+        label = np.asarray(plabel, dtype=np.float32)
+        np.save('idata_000001', data)
+        np.save('ilabel_000001', label)
+        print('data saved')
+
     else:
         try:
             import QUANTAXIS as qa
@@ -24,11 +49,11 @@ def generate_data(stock):
             # mid = []
             pdata = []
             plabel = []
-            for x in range(cdata.shape[0]-TIMESTEPS):
+            for x in range(cdata.shape[0]-TIMESTEPS-3):
                 # mid.append(cdata.iloc[x: x+TIMESTEPS, :])
                 day = cdata.iloc[x: x+TIMESTEPS, :] / cdata.ix[x+TIMESTEPS-1, 'close'] - 1
                 pdata.append(day.values.flatten())
-                plabel.append(cdata.ix[x+TIMESTEPS, 'close'] / cdata.ix[x+TIMESTEPS-1, 'close'] - 1)
+                plabel.append((cdata.ix[x+TIMESTEPS+3, 'close'] / cdata.ix[x+TIMESTEPS, 'open'] - 1) > 0.05)
             data = np.asarray(pdata, dtype=np.float32)
             label = np.asarray(plabel, dtype=np.float32)
             np.save('data_000001', data)
@@ -42,15 +67,15 @@ def generate_data(stock):
 data, label = generate_data('000001')
 
 print(len(data))
-#print(data[:2])
-#print(label[:2])
+print(data[:2])
+print(label[:2])
 
-train_X = data[:950]
-train_y = label[:950]
-test_X = data[950:]
-test_y = label[950:]
+train_X = data[:400]
+train_y = label[:400]
+test_X = data[400:]
+test_y = label[400:]
 
-n_input = 4
+n_input = INTERVAL + 1
 n_classes = 1
 
 weights = {
@@ -61,6 +86,7 @@ biases = {
     'hidden': tf.Variable(tf.random_normal([HIDDEN_SIZE])),
     'out': tf.Variable(tf.random_normal([n_classes]), name='biases')
 }
+
 
 def lstm_model(X, y, is_training, weights, biases):
 
@@ -91,10 +117,6 @@ def lstm_model(X, y, is_training, weights, biases):
     predictions = tf.matmul(output, weights['out'], name='logits_rnn_out') + biases['out']
 
     # predictions = tf.contrib.layers.fully_connected(output, 1, activation_fn=None)
-    # predictions.set_shape([None, 1])
-    # y.set_shape([None, 1])
-    # print(tf.shape(predictions))
-    # print(y.shape)
 
     # 只在训练时计算损失函数和优化步骤。测试时直接返回预测结果。
     if not is_training:
@@ -104,9 +126,12 @@ def lstm_model(X, y, is_training, weights, biases):
     y = tf.reshape(y, [-1, 1])
     loss = tf.reduce_sum(tf.multiply(tf.squared_difference(y, predictions),
                          tf.cast(tf.logical_and(tf.less(y, tf.zeros_like(y) - 0.01), tf.greater(predictions, tf.zeros_like(y) + 0.01)), tf.float32) * 2 +
-                                     #tf.cast(tf.less(y, predictions), tf.float32) * 1 +
-                                     tf.ones_like(y)))
+    #                                 #tf.cast(tf.less(y, predictions), tf.float32) * 1 +
+                                 tf.ones_like(y)))
     #loss = tf.losses.mean_squared_error(labels=y, predictions=predictions)
+
+    # pred = tf.argmax(predictions, 1)
+    # loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=pred))
 
     # 创建模型优化器并得到优化步骤。
     train_op = tf.contrib.layers.optimize_loss(
