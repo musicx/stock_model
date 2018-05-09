@@ -3,17 +3,20 @@ import pandas as pd
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import os
+from attention import attention
 
 HIDDEN_SIZE = 128                            # LSTM中隐藏节点的个数。
 NUM_LAYERS = 1                              # LSTM的层数。
 TIMESTEPS = 30                              # 循环神经网络的训练序列长度。
 TRAINING_STEPS = 5000                      # 训练轮数。
-BATCH_SIZE = 32                             # batch大小。
+BATCH_SIZE = 128                             # batch大小。
+EPOCH_NUM = 200
 
 pvars = ['open', 'close', 'high', 'low']
 
 INDEX = True
 INTERVAL = 240 // 5
+ATTENTION_SIZE = 64
 
 def generate_data(stock):
     if os.path.exists("idata_000001.npy"):
@@ -80,7 +83,7 @@ n_classes = 1
 
 weights = {
     'hidden': tf.Variable(tf.random_normal([n_input, HIDDEN_SIZE])),  # Hidden layer weights
-    'out': tf.Variable(tf.random_normal([HIDDEN_SIZE, n_classes]))
+    'out': tf.Variable(tf.random_normal([HIDDEN_SIZE * 2, n_classes]))
 }
 biases = {
     'hidden': tf.Variable(tf.random_normal([HIDDEN_SIZE])),
@@ -88,7 +91,12 @@ biases = {
 }
 
 
-def lstm_model(X, y, is_training, weights, biases):
+w_omega = tf.Variable(tf.random_normal([HIDDEN_SIZE * 2, ATTENTION_SIZE], stddev=0.1))
+b_omega = tf.Variable(tf.random_normal([ATTENTION_SIZE], stddev=0.1))
+u_omega = tf.Variable(tf.random_normal([ATTENTION_SIZE], stddev=0.1))
+
+
+def lstm_model(X, y, is_training):
 
     # 规整成矩阵数据
     X = tf.reshape(X, [-1, TIMESTEPS, n_input])
@@ -102,19 +110,23 @@ def lstm_model(X, y, is_training, weights, biases):
     # 之后使用LSTM
 
     # 使用多层的LSTM结构。
-    cell = tf.nn.rnn_cell.MultiRNNCell([
-        tf.nn.rnn_cell.BasicLSTMCell(HIDDEN_SIZE, forget_bias=1.0, state_is_tuple=True)
-        for _ in range(NUM_LAYERS)])
+    # cell = tf.nn.rnn_cell.MultiRNNCell([
+    #     tf.nn.rnn_cell.BasicLSTMCell(HIDDEN_SIZE, forget_bias=1.0, state_is_tuple=True)
+    #     for _ in range(NUM_LAYERS)])
+
 
     # 使用TensorFlow接口将多层的LSTM结构连接成RNN网络并计算其前向传播结果。
     # X = tf.split(X, TIMESTEPS, 0)
     X = tf.reshape(X, [-1, TIMESTEPS, HIDDEN_SIZE])
-    outputs, _ = tf.nn.dynamic_rnn(cell, X, dtype=tf.float32)
-    output = outputs[:, -1, :]
+    outputs, _ = tf.nn.bidirectional_dynamic_rnn(tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE),
+                                                 tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE), X, dtype=tf.float32)
+    # output = outputs[:, -1, :]
+    with tf.name_scope('Attention_layer'):
+        attention_output = attention(outputs, (w_omega, b_omega, u_omega), return_alphas=False)
 
     # 对LSTM网络的输出再做加一层全链接层并计算损失。注意这里默认的损失为平均
     # 平方差损失函数。
-    predictions = tf.matmul(output, weights['out'], name='logits_rnn_out') + biases['out']
+    predictions = tf.matmul(attention_output, weights['out'], name='logits_rnn_out') + biases['out']
 
     # predictions = tf.contrib.layers.fully_connected(output, 1, activation_fn=None)
 
@@ -140,7 +152,43 @@ def lstm_model(X, y, is_training, weights, biases):
     return predictions, loss, train_op
 
 
-def run_eval(sess, test_X, test_y, weights, biases):
+def run_day_eval(sess, test):
+    count = test.groupby('date').count().code
+    valid_date = count[count > 100].index.tolist()
+    hit_rate = []
+    for date in valid_date:
+        print('evaluate %s' % date)
+        test_data = test.loc[test.date == date, :]
+        test_X = test_data.iloc[:, :-3].values
+        test_y = test_data.iloc[:, -1].values
+        codes = test_data.loc[:, 'code'].tolist()
+
+        ds = tf.data.Dataset.from_tensor_slices((test_X, test_y))
+        ds = ds.batch(1)
+        X, y = ds.make_one_shot_iterator().get_next()
+
+        # 调用模型得到计算结果。这里不需要输入真实的y值。
+        with tf.variable_scope("eval", reuse=True):
+            prediction, _, _ = lstm_model(X, [0.0], False)
+
+        # 将预测结果存入一个数组。
+        predictions = []
+        hit = 0.
+        for i in range(len(test_X)):
+            pred, l = sess.run([prediction, y])
+            predictions.append({codes[i], pred, l})
+        predictions.sort(key=lambda x: x[1], reverse=True)
+        for p in predictions[:10]:
+            print('{}: predicted {}, real {}'.format(p[0], p[1], p[2]))
+            if p[2] > 0:
+                hit += 1
+        hit_rate.append(hit / 10.)
+        print('\n-------------\n')
+    print('hit rate: {}'.format(np.array(hit_rate).mean()))
+
+
+
+def run_eval(sess, test_X, test_y):
     # 将测试数据以数据集的方式提供给计算图。
     ds = tf.data.Dataset.from_tensor_slices((test_X, test_y))
     ds = ds.batch(1)
@@ -148,7 +196,7 @@ def run_eval(sess, test_X, test_y, weights, biases):
 
     # 调用模型得到计算结果。这里不需要输入真实的y值。
     with tf.variable_scope("model", reuse=True):
-        prediction, _, _ = lstm_model(X, [0.0], False, weights, biases)
+        prediction, _, _ = lstm_model(X, [0.0], False)
 
     # 将预测结果存入一个数组。
     predictions = []
@@ -174,13 +222,13 @@ def run_eval(sess, test_X, test_y, weights, biases):
 
 # 将训练数据以数据集的方式提供给计算图。
 tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
-tds = tds.repeat().shuffle(1000).batch(BATCH_SIZE)
+tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
 t_X, t_y = tds.make_one_shot_iterator().get_next()
 
 
 # 定义模型，得到预测结果、损失函数，和训练操作。
 with tf.variable_scope("model"):
-    _, loss, train_op = lstm_model(t_X, t_y, True, weights, biases)
+    _, loss, train_op = lstm_model(t_X, t_y, True)
 
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
@@ -192,11 +240,17 @@ with tf.Session() as sess:
     # print(sess.run(x_shape))
 
     # 训练模型。
-    for i in range(TRAINING_STEPS):
-        _, l = sess.run([train_op, loss])
-        if i % 1000 == 0:
-            print("train step: " + str(i) + ", loss: " + str(l))
+    step = 0
+    # for i in range(TRAINING_STEPS):
+    while True:
+        try:
+            _, l = sess.run([train_op, loss])
+            if step % 1000 == 0:
+                print("train step: " + str(step) + ", loss: " + str(l))
+        except tf.errors.OutOfRangeError as e:
+            break
+        step += 1
 
     # 使用训练好的模型对测试数据进行预测。
     print("Evaluate model after training.")
-    run_eval(sess, test_X, test_y, weights, biases)
+    run_eval(sess, test_X, test_y)
