@@ -10,7 +10,7 @@ NUM_LAYERS = 1                              # LSTM的层数。
 TIMESTEPS = 30                              # 循环神经网络的训练序列长度。
 TRAINING_STEPS = 5000                      # 训练轮数。
 BATCH_SIZE = 128                             # batch大小。
-EPOCH_NUM = 2000
+EPOCH_NUM = 200
 
 pvars = ['open', 'close', 'high', 'low']
 
@@ -27,7 +27,8 @@ def generate_data(stock):
         label = np.load('ilabel_000001.npy')
     elif INDEX:
         import QUANTAXIS as qa
-        candles = qa.QA_fetch_index_min('000001', start='2015-01-01', end='2018-05-08', format='pandas', frequence='5min')
+        candles = qa.QA_fetch_index_min('000001', start='2015-01-01', end='2018-05-08',
+                                        format='pandas', frequence='5min')
         days = []
         for x in range(candles.shape[0] // INTERVAL):
             day = candles.ix[x*INTERVAL : (x+1)*INTERVAL, ['open', 'close']]
@@ -80,13 +81,17 @@ def generate_min_data():
 
     for stock in stocks.code.tolist():
         print('handling %s' % stock)
-        candles = qa.QA_fetch_stock_min(stock, start='2015-01-01', end='2018-05-08', format='pandas', frequence='5min')
-        days = []
-        for x in range(candles.shape[0] // INTERVAL):
-            day = candles.ix[x*INTERVAL : (x+1)*INTERVAL, ['open', 'close']]
-            days.append(np.insert(day.close.values, 0, day.open[0]))
-        cdata = pd.DataFrame(days)
-        if cdata.shape[0] < 50:
+        try:
+            candles = qa.QA_fetch_stock_min(stock, start='2015-01-01', end='2018-05-08', format='pandas', frequence='5min')
+            days = []
+            for x in range(candles.shape[0] // INTERVAL):
+                day = candles.ix[x*INTERVAL : (x+1)*INTERVAL, ['open', 'close']]
+                days.append(np.insert(day.close.values, 0, day.open[0]))
+            cdata = pd.DataFrame(days)
+            if cdata.shape[0] < 50:
+                continue
+        except:
+            print('data error: {}'.format(stock))
             continue
 
         pdata = []
@@ -97,13 +102,17 @@ def generate_min_data():
             tmrrw = cdata.iloc[x+TIMESTEPS, -1] / cdata.iloc[x+TIMESTEPS-1, -1] - 1 if x < cdata.shape[0]-TIMESTEPS else 0
             pdata.append(today.values.flatten())
             plabel.append(tmrrw)
-        train_data.extend(pdata[:-TEST_PERIOD])
-        train_label.extend(plabel[:-TEST_PERIOD])
-        test = pd.DataFrame(pdata[-TEST_PERIOD:])
-        test['code'] = stock
-        test['date'] = candles.date.unique()[-TEST_PERIOD:]
-        test['label'] = plabel[-TEST_PERIOD:]
-        test_data.append(test)
+        try:
+            test = pd.DataFrame(pdata[-TEST_PERIOD:])
+            test['code'] = stock
+            test['date'] = candles.date.unique()[-TEST_PERIOD:]
+            test['label'] = plabel[-TEST_PERIOD:]
+            test_data.append(test)
+            train_data.extend(pdata[:-TEST_PERIOD])
+            train_label.extend(plabel[:-TEST_PERIOD])
+        except:
+            print('error found: {}'.format(stock))
+            continue
         # test_data.extend(pdata[-50:])
         # test_label.extend(plabel[-50:])
     test = pd.concat(test_data)
@@ -248,7 +257,7 @@ def run_eval(sess, test_X, test_y):
 
     # 调用模型得到计算结果。这里不需要输入真实的y值。
     with tf.variable_scope("model", reuse=True):
-        prediction, _, _ = lstm_model(X, [0.0], False, weights, biases)
+        prediction, _, _ = lstm_model(X, [0.0], False)
 
     # 将预测结果存入一个数组。
     predictions = []
@@ -308,4 +317,4 @@ with tf.Session() as sess:
 
     # 使用训练好的模型对测试数据进行预测。
     print("Evaluate model after training.")
-    run_eval(sess, test_X, test_y)
+    run_day_eval(sess, test_df)
