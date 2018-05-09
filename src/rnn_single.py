@@ -10,7 +10,7 @@ NUM_LAYERS = 1                              # LSTM的层数。
 TIMESTEPS = 30                              # 循环神经网络的训练序列长度。
 TRAINING_STEPS = 5000                      # 训练轮数。
 BATCH_SIZE = 128                             # batch大小。
-EPOCH_NUM = 200
+EPOCH_NUM = 2000
 
 pvars = ['open', 'close', 'high', 'low']
 
@@ -82,12 +82,12 @@ n_input = INTERVAL + 1
 n_classes = 1
 
 weights = {
-    'hidden': tf.Variable(tf.random_normal([n_input, HIDDEN_SIZE])),  # Hidden layer weights
-    'out': tf.Variable(tf.random_normal([HIDDEN_SIZE * 2, n_classes]))
+    'hidden': tf.Variable(tf.random_normal([n_input, HIDDEN_SIZE], stddev=0.1)),  # Hidden layer weights
+    'out': tf.Variable(tf.random_normal([HIDDEN_SIZE * 2, n_classes], stddev=0.1))
 }
 biases = {
-    'hidden': tf.Variable(tf.random_normal([HIDDEN_SIZE])),
-    'out': tf.Variable(tf.random_normal([n_classes]), name='biases')
+    'hidden': tf.Variable(tf.random_normal([HIDDEN_SIZE], stddev=0.1)),
+    'out': tf.Variable(tf.random_normal([n_classes], stddev=0.1), name='biases')
 }
 
 
@@ -136,10 +136,11 @@ def lstm_model(X, y, is_training):
 
     # 计算损失函数。
     y = tf.reshape(y, [-1, 1])
-    loss = tf.reduce_sum(tf.multiply(tf.squared_difference(y, predictions),
-                         tf.cast(tf.logical_and(tf.less(y, tf.zeros_like(y) - 0.01), tf.greater(predictions, tf.zeros_like(y) + 0.01)), tf.float32) * 2 +
+    loss = tf.reduce_sum(tf.sqrt(tf.multiply(tf.squared_difference(y, predictions),
+                                             tf.cast(tf.logical_and(tf.less(y, tf.zeros_like(y) - 0.01),
+                                                                    tf.greater(predictions, tf.zeros_like(y) + 0.01)), tf.float32) * 4 +
     #                                 #tf.cast(tf.less(y, predictions), tf.float32) * 1 +
-                                 tf.ones_like(y)))
+                                 tf.ones_like(y))))
     #loss = tf.losses.mean_squared_error(labels=y, predictions=predictions)
 
     # pred = tf.argmax(predictions, 1)
