@@ -7,13 +7,16 @@ import os
 HIDDEN_SIZE = 128                            # LSTM中隐藏节点的个数。
 NUM_LAYERS = 1                              # LSTM的层数。
 TIMESTEPS = 30                              # 循环神经网络的训练序列长度。
-TRAINING_STEPS = 5000                      # 训练轮数。
+TRAINING_STEPS = 10001                      # 训练轮数。
 BATCH_SIZE = 32                             # batch大小。
 
 pvars = ['open', 'close', 'high', 'low']
 
-INDEX = True
+INDEX = False
 INTERVAL = 240 // 5
+MIN = True
+TEST_PERIOD = 30
+
 
 def generate_data(stock):
     if os.path.exists("idata_000001.npy"):
@@ -41,6 +44,7 @@ def generate_data(stock):
         np.save('ilabel_000001', label)
         print('data saved')
 
+
     else:
         try:
             import QUANTAXIS as qa
@@ -64,16 +68,64 @@ def generate_data(stock):
     return data, label
 
 
-data, label = generate_data('000001')
+def generate_min_data():
+    import QUANTAXIS as qa
+    stocks = qa.QA_fetch_stock_list_adv()
+    train_data = []
+    train_label = []
+    test_data = []
+    # test_label = []
 
-print(len(data))
-print(data[:2])
-print(label[:2])
+    for stock in stocks.code.tolist():
+        print('handling %s' % stock)
+        candles = qa.QA_fetch_stock_min(stock, start='2015-01-01', end='2018-05-08', format='pandas', frequence='5min')
+        days = []
+        for x in range(candles.shape[0] // INTERVAL):
+            day = candles.ix[x*INTERVAL : (x+1)*INTERVAL, ['open', 'close']]
+            days.append(np.insert(day.close.values, 0, day.open[0]))
+        cdata = pd.DataFrame(days)
+        if cdata.shape[0] < 50:
+            continue
 
-train_X = data[:400]
-train_y = label[:400]
-test_X = data[400:]
-test_y = label[400:]
+        pdata = []
+        plabel = []
+        for x in range(cdata.shape[0]-TIMESTEPS+1):
+            # mid.append(cdata.iloc[x: x+TIMESTEPS, :])
+            today = cdata.iloc[x: x+TIMESTEPS, :] / cdata.iloc[x+TIMESTEPS-1, -1] - 1
+            tmrrw = cdata.iloc[x+TIMESTEPS, -1] / cdata.iloc[x+TIMESTEPS-1, -1] - 1 if x < cdata.shape[0]-TIMESTEPS else 0
+            pdata.append(today.values.flatten())
+            plabel.append(tmrrw)
+        train_data.extend(pdata[:-TEST_PERIOD])
+        train_label.extend(plabel[:-TEST_PERIOD])
+        test = pd.DataFrame(pdata[-TEST_PERIOD:])
+        test['code'] = stock
+        test['date'] = candles.date.unique()[-TEST_PERIOD:]
+        test['label'] = plabel[-TEST_PERIOD:]
+        test_data.append(test)
+        # test_data.extend(pdata[-50:])
+        # test_label.extend(plabel[-50:])
+    test = pd.concat(test_data)
+    test = test.sort_values('date')
+    return np.asarray(train_data, dtype=np.float32), np.asarray(train_label, dtype=np.float32), test
+
+
+# data, label = generate_data('000001')
+
+# print(len(data))
+# print(data[:2])
+# print(label[:2])
+
+# train_X = data[:400]
+# train_y = label[:400]
+# test_X = data[400:]
+# test_y = label[400:]
+
+train_X, train_y, test_df = generate_min_data()
+
+np.save('../data/rnn_train', train_X)
+np.save('../data/rnn_label', train_y)
+test_df.to_hdf('../data/rnn_test.hdf', 'test')
+print('data saved')
 
 n_input = INTERVAL + 1
 n_classes = 1
@@ -174,13 +226,15 @@ def run_eval(sess, test_X, test_y, weights, biases):
 
 # 将训练数据以数据集的方式提供给计算图。
 tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
-tds = tds.repeat().shuffle(1000).batch(BATCH_SIZE)
+tds = tds.repeat().shuffle(666).batch(BATCH_SIZE)
 t_X, t_y = tds.make_one_shot_iterator().get_next()
 
 
 # 定义模型，得到预测结果、损失函数，和训练操作。
 with tf.variable_scope("model"):
     _, loss, train_op = lstm_model(t_X, t_y, True, weights, biases)
+
+saver = tf.train.Saver()
 
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
@@ -196,7 +250,8 @@ with tf.Session() as sess:
         _, l = sess.run([train_op, loss])
         if i % 1000 == 0:
             print("train step: " + str(i) + ", loss: " + str(l))
+            saver.save(sess, '../model/rnn0508', global_step=i)
 
     # 使用训练好的模型对测试数据进行预测。
     print("Evaluate model after training.")
-    run_eval(sess, test_X, test_y, weights, biases)
+    #run_eval(sess, test_X, test_y, weights, biases)
