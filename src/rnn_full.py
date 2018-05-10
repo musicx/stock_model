@@ -14,9 +14,7 @@ EPOCH_NUM = 200
 
 pvars = ['open', 'close', 'high', 'low']
 
-single_stock = '002635'
-
-INDEX = True
+INDEX = False
 INTERVAL = 240 // 5
 ATTENTION_SIZE = 64
 MIN = True
@@ -122,23 +120,23 @@ def generate_min_data():
     return np.asarray(train_data, dtype=np.float32), np.asarray(train_label, dtype=np.float32), test
 
 
-data, label = generate_data('000001')
+# data, label = generate_data('000001')
 
-print(len(data))
+# print(len(data))
 # print(data[:2])
 # print(label[:2])
 
-train_X = data[:-30]
-train_y = label[:-30]
-test_X = data[-30:]
-test_y = label[-30:]
+# train_X = data[:400]
+# train_y = label[:400]
+# test_X = data[400:]
+# test_y = label[400:]
 
-# train_X, train_y, test_df = generate_min_data()
-#
-# np.save('../data/rnn_train', train_X)
-# np.save('../data/rnn_label', train_y)
-# test_df.to_hdf('../data/rnn_test.hdf', 'test')
-# print('data saved')
+train_X, train_y, test_df = generate_min_data()
+
+np.save('../data/rnn_train', train_X)
+np.save('../data/rnn_label', train_y)
+test_df.to_hdf('../data/rnn_test.hdf', 'test')
+print('data saved')
 
 n_input = INTERVAL + 1
 n_classes = 1
@@ -319,4 +317,4 @@ with tf.Session() as sess:
 
     # 使用训练好的模型对测试数据进行预测。
     print("Evaluate model after training.")
-    run_eval(sess, test_X, test_y)
+    run_day_eval(sess, test_df)
