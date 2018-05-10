@@ -116,7 +116,7 @@ def generate_min_data():
         # test_data.extend(pdata[-50:])
         # test_label.extend(plabel[-50:])
     test = pd.concat(test_data)
-    test = test.sort_values('date')
+    # test = test.sort_values('date')
     return np.asarray(train_data, dtype=np.float32), np.asarray(train_label, dtype=np.float32), test
 
 
