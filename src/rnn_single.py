@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import os
 from attention import attention
 
@@ -10,7 +10,7 @@ NUM_LAYERS = 1                              # LSTM的层数。
 TIMESTEPS = 30                              # 循环神经网络的训练序列长度。
 TRAINING_STEPS = 5000                      # 训练轮数。
 BATCH_SIZE = 128                             # batch大小。
-EPOCH_NUM = 200
+EPOCH_NUM = 20
 
 pvars = ['open', 'close', 'high', 'low']
 
@@ -131,12 +131,31 @@ def generate_min_data():
 # test_X = data[400:]
 # test_y = label[400:]
 
-train_X, train_y, test_df = generate_min_data()
+if os.path.exists('../data/rnn_train.tfrecords'):
+    filename_queue = tf.train.string_input_producer(['../data/rnn_train.tfrecords'], num_epochs=1)
+    reader = tf.TFRecordReader()
+    _, serialized_example = reader.read(filename_queue)
+    features = tf.parse_single_example(
+        serialized_example,
+        # Defaults are not specified since both keys are required.
+        features={
+            'X': tf.FixedLenFeature([], tf.float32),
+            'Y': tf.FixedLenFeature([], tf.float32)
+        })
+    t_X, t_y = tf.train.shuffle_batch([features['X'], features['Y']], batch_size=BATCH_SIZE, 
+                                      capacity=1470, num_threads=2, min_after_dequeue=10)
+    
+    test_df = pd.read_hdf('../data/rnn_test.hdf', 'test')
+    print('data read')
+    
+else:
 
-np.save('../data/rnn_train', train_X)
-np.save('../data/rnn_label', train_y)
-test_df.to_hdf('../data/rnn_test.hdf', 'test')
-print('data saved')
+    train_X, train_y, test_df = generate_min_data()
+
+    np.save('rnn_train', train_X)
+    np.save('rnn_label', train_y)
+    test_df.to_hdf('rnn_test.hdf', 'test')
+    print('data saved')
 
 n_input = INTERVAL + 1
 n_classes = 1
@@ -281,10 +300,11 @@ def run_eval(sess, test_X, test_y):
     plt.show()
 
 
+
 # 将训练数据以数据集的方式提供给计算图。
-tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
-tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
-t_X, t_y = tds.make_one_shot_iterator().get_next()
+#tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
+#tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
+#t_X, t_y = tds.make_one_shot_iterator().get_next()
 
 
 # 定义模型，得到预测结果、损失函数，和训练操作。
