@@ -1,24 +1,22 @@
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import os
 from attention import attention
 
-HIDDEN_SIZE = 32                            # LSTM中隐藏节点的个数。
+HIDDEN_SIZE = 128                            # LSTM中隐藏节点的个数。
 NUM_LAYERS = 1                              # LSTM的层数。
 TIMESTEPS = 30                              # 循环神经网络的训练序列长度。
 TRAINING_STEPS = 5000                      # 训练轮数。
-BATCH_SIZE = 32                             # batch大小。
-EPOCH_NUM = 100
+BATCH_SIZE = 128                             # batch大小。
+EPOCH_NUM = 20
 
 pvars = ['open', 'close', 'high', 'low']
 
-single_stock = '002635'
-
-INDEX = True
+INDEX = False
 INTERVAL = 240 // 5
-ATTENTION_SIZE = 32
+ATTENTION_SIZE = 64
 MIN = True
 TEST_PERIOD = 30
 
@@ -122,23 +120,42 @@ def generate_min_data():
     return np.asarray(train_data, dtype=np.float32), np.asarray(train_label, dtype=np.float32), test
 
 
-data, label = generate_data('000001')
+# data, label = generate_data('000001')
 
-print(len(data))
+# print(len(data))
 # print(data[:2])
 # print(label[:2])
 
-train_X = data[:-TEST_PERIOD]
-train_y = label[:-TEST_PERIOD]
-test_X = data[-TEST_PERIOD:]
-test_y = label[-TEST_PERIOD:]
+# train_X = data[:400]
+# train_y = label[:400]
+# test_X = data[400:]
+# test_y = label[400:]
 
-# train_X, train_y, test_df = generate_min_data()
-#
-# np.save('../data/rnn_train', train_X)
-# np.save('../data/rnn_label', train_y)
-# test_df.to_hdf('../data/rnn_test.hdf', 'test')
-# print('data saved')
+if os.path.exists('../data/rnn_train.tfrecords'):
+    filename_queue = tf.train.string_input_producer(['../data/rnn_train.tfrecords'], num_epochs=1)
+    reader = tf.TFRecordReader()
+    _, serialized_example = reader.read(filename_queue)
+    features = tf.parse_single_example(
+        serialized_example,
+        # Defaults are not specified since both keys are required.
+        features={
+            'X': tf.FixedLenFeature([], tf.float32),
+            'Y': tf.FixedLenFeature([], tf.float32)
+        })
+    t_X, t_y = tf.train.shuffle_batch([features['X'], features['Y']], batch_size=BATCH_SIZE, 
+                                      capacity=1470, num_threads=2, min_after_dequeue=10)
+    
+    test_df = pd.read_hdf('../data/rnn_test.hdf', 'test')
+    print('data read')
+    
+else:
+
+    train_X, train_y, test_df = generate_min_data()
+
+    np.save('rnn_train', train_X)
+    np.save('rnn_label', train_y)
+    test_df.to_hdf('rnn_test.hdf', 'test')
+    print('data saved')
 
 n_input = INTERVAL + 1
 n_classes = 1
@@ -198,12 +215,12 @@ def lstm_model(X, y, is_training):
 
     # 计算损失函数。
     y = tf.reshape(y, [-1, 1])
-    # loss = tf.reduce_sum(tf.sqrt(tf.multiply(tf.squared_difference(y, predictions),
-    #                                          tf.cast(tf.logical_and(tf.less(y, tf.zeros_like(y) - 0.001),
-    #                                                                 tf.greater(predictions, tf.zeros_like(y) + 0.001)), tf.float32) * 4 +
-    # #                                 #tf.cast(tf.less(y, predictions), tf.float32) * 1 +
-    #                              tf.ones_like(y))))
-    loss = tf.losses.mean_squared_error(labels=y, predictions=predictions)
+    loss = tf.reduce_sum(tf.sqrt(tf.multiply(tf.squared_difference(y, predictions),
+                                             tf.cast(tf.logical_and(tf.less(y, tf.zeros_like(y) - 0.01),
+                                                                    tf.greater(predictions, tf.zeros_like(y) + 0.01)), tf.float32) * 4 +
+    #                                 #tf.cast(tf.less(y, predictions), tf.float32) * 1 +
+                                 tf.ones_like(y))))
+    #loss = tf.losses.mean_squared_error(labels=y, predictions=predictions)
 
     # pred = tf.argmax(predictions, 1)
     # loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=pred))
@@ -277,16 +294,17 @@ def run_eval(sess, test_X, test_y):
 
     # 对预测的sin函数曲线进行绘图。
     plt.figure()
-    plt.plot(predictions * 10, label='predictions')
+    plt.plot(predictions, label='predictions')
     plt.plot(labels, label='real_close')
     plt.legend()
     plt.show()
 
 
+
 # 将训练数据以数据集的方式提供给计算图。
-tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
-tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
-t_X, t_y = tds.make_one_shot_iterator().get_next()
+#tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
+#tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
+#t_X, t_y = tds.make_one_shot_iterator().get_next()
 
 
 # 定义模型，得到预测结果、损失函数，和训练操作。
@@ -310,14 +328,13 @@ with tf.Session() as sess:
     while True:
         try:
             _, l = sess.run([train_op, loss])
-            if step % 100 == 0:
+            if step % 1000 == 0:
                 print("train step: " + str(step) + ", loss: " + str(l))
-                # saver.save(sess, '../model/rnn0508', global_step=step)
+                saver.save(sess, '../model/rnn0508', global_step=step)
         except tf.errors.OutOfRangeError as e:
             break
         step += 1
 
-    saver.save(sess, '../model/rnn0508')
     # 使用训练好的模型对测试数据进行预测。
     print("Evaluate model after training.")
-    run_eval(sess, test_X, test_y)
+    run_day_eval(sess, test_df)
