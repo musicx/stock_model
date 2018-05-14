@@ -1,16 +1,16 @@
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-#import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import os
 from attention import attention
 
-HIDDEN_SIZE = 128                            # LSTM中隐藏节点的个数。
-NUM_LAYERS = 1                              # LSTM的层数。
-TIMESTEPS = 30                              # 循环神经网络的训练序列长度。
-TRAINING_STEPS = 5000                      # 训练轮数。
-BATCH_SIZE = 128                             # batch大小。
-EPOCH_NUM = 20
+HIDDEN_SIZE = 128  # LSTM中隐藏节点的个数。
+NUM_LAYERS = 1  # LSTM的层数。
+TIMESTEPS = 30  # 循环神经网络的训练序列长度。
+TRAINING_STEPS = 5000  # 训练轮数。
+BATCH_SIZE = 128  # batch大小。
+EPOCH_NUM = 1
 
 pvars = ['open', 'close', 'high', 'low']
 
@@ -31,17 +31,17 @@ def generate_data(stock):
                                         format='pandas', frequence='5min')
         days = []
         for x in range(candles.shape[0] // INTERVAL):
-            day = candles.ix[x*INTERVAL : (x+1)*INTERVAL, ['open', 'close']]
+            day = candles.ix[x * INTERVAL: (x + 1) * INTERVAL, ['open', 'close']]
             days.append(np.insert(day.close.values, 0, day.open[0]))
         cdata = pd.DataFrame(days)
 
         pdata = []
         plabel = []
-        for x in range(cdata.shape[0]-TIMESTEPS):
+        for x in range(cdata.shape[0] - TIMESTEPS):
             # mid.append(cdata.iloc[x: x+TIMESTEPS, :])
-            day = cdata.iloc[x: x+TIMESTEPS, :] / cdata.iloc[x+TIMESTEPS-1, -1] - 1
+            day = cdata.iloc[x: x + TIMESTEPS, :] / cdata.iloc[x + TIMESTEPS - 1, -1] - 1
             pdata.append(day.values.flatten())
-            plabel.append(cdata.iloc[x+TIMESTEPS, -1] / cdata.iloc[x+TIMESTEPS-1, -1] - 1)
+            plabel.append(cdata.iloc[x + TIMESTEPS, -1] / cdata.iloc[x + TIMESTEPS - 1, -1] - 1)
         data = np.asarray(pdata, dtype=np.float32)
         label = np.asarray(plabel, dtype=np.float32)
         np.save('idata_000001', data)
@@ -56,11 +56,11 @@ def generate_data(stock):
             # mid = []
             pdata = []
             plabel = []
-            for x in range(cdata.shape[0]-TIMESTEPS-3):
+            for x in range(cdata.shape[0] - TIMESTEPS - 3):
                 # mid.append(cdata.iloc[x: x+TIMESTEPS, :])
-                day = cdata.iloc[x: x+TIMESTEPS, :] / cdata.ix[x+TIMESTEPS-1, 'close'] - 1
+                day = cdata.iloc[x: x + TIMESTEPS, :] / cdata.ix[x + TIMESTEPS - 1, 'close'] - 1
                 pdata.append(day.values.flatten())
-                plabel.append((cdata.ix[x+TIMESTEPS+3, 'close'] / cdata.ix[x+TIMESTEPS, 'open'] - 1) > 0.05)
+                plabel.append((cdata.ix[x + TIMESTEPS + 3, 'close'] / cdata.ix[x + TIMESTEPS, 'open'] - 1) > 0.05)
             data = np.asarray(pdata, dtype=np.float32)
             label = np.asarray(plabel, dtype=np.float32)
             np.save('data_000001', data)
@@ -82,10 +82,11 @@ def generate_min_data():
     for stock in stocks.code.tolist():
         print('handling %s' % stock)
         try:
-            candles = qa.QA_fetch_stock_min(stock, start='2015-01-01', end='2018-05-08', format='pandas', frequence='5min')
+            candles = qa.QA_fetch_stock_min(stock, start='2015-01-01', end='2018-05-08', format='pandas',
+                                            frequence='5min')
             days = []
             for x in range(candles.shape[0] // INTERVAL):
-                day = candles.ix[x*INTERVAL : (x+1)*INTERVAL, ['open', 'close']]
+                day = candles.ix[x * INTERVAL: (x + 1) * INTERVAL, ['open', 'close']]
                 days.append(np.insert(day.close.values, 0, day.open[0]))
             cdata = pd.DataFrame(days)
             if cdata.shape[0] < 50:
@@ -96,10 +97,11 @@ def generate_min_data():
 
         pdata = []
         plabel = []
-        for x in range(cdata.shape[0]-TIMESTEPS+1):
+        for x in range(cdata.shape[0] - TIMESTEPS + 1):
             # mid.append(cdata.iloc[x: x+TIMESTEPS, :])
-            today = cdata.iloc[x: x+TIMESTEPS, :] / cdata.iloc[x+TIMESTEPS-1, -1] - 1
-            tmrrw = cdata.iloc[x+TIMESTEPS, -1] / cdata.iloc[x+TIMESTEPS-1, -1] - 1 if x < cdata.shape[0]-TIMESTEPS else 0
+            today = cdata.iloc[x: x + TIMESTEPS, :] / cdata.iloc[x + TIMESTEPS - 1, -1] - 1
+            tmrrw = cdata.iloc[x + TIMESTEPS, -1] / cdata.iloc[x + TIMESTEPS - 1, -1] - 1 if x < cdata.shape[
+                0] - TIMESTEPS else 0
             pdata.append(today.values.flatten())
             plabel.append(tmrrw)
         try:
@@ -131,23 +133,26 @@ def generate_min_data():
 # test_X = data[400:]
 # test_y = label[400:]
 
+def _parse_function(exm):
+    features = {"X": tf.FixedLenFeature([1470], tf.float32),
+                "Y": tf.FixedLenFeature([1], tf.float32)}
+    parsed_features = tf.parse_single_example(exm, features)
+    return parsed_features["X"], parsed_features["Y"]
+
+
 if os.path.exists('../data/rnn_train.tfrecords'):
-    filename_queue = tf.train.string_input_producer(['../data/rnn_train.tfrecords'], num_epochs=1)
-    reader = tf.TFRecordReader()
-    _, serialized_example = reader.read(filename_queue)
-    features = tf.parse_single_example(
-        serialized_example,
-        # Defaults are not specified since both keys are required.
-        features={
-            'X': tf.FixedLenFeature([], tf.float32),
-            'Y': tf.FixedLenFeature([], tf.float32)
-        })
-    t_X, t_y = tf.train.shuffle_batch([features['X'], features['Y']], batch_size=BATCH_SIZE, 
-                                      capacity=1470, num_threads=2, min_after_dequeue=10)
-    
+    fn = ["../data/rnn_train.tfrecords"]
+    tds = tf.contrib.data.TFRecordDataset(fn)
+    tds = tds.map(_parse_function)
+    tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
+    t_X, t_y = tds.make_one_shot_iterator().get_next()
+    # tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
+    # tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
+    # t_X, t_y = tds.make_one_shot_iterator().get_next()
+
     test_df = pd.read_hdf('../data/rnn_test.hdf', 'test')
     print('data read')
-    
+
 else:
 
     train_X, train_y, test_df = generate_min_data()
@@ -161,14 +166,14 @@ n_input = INTERVAL + 1
 n_classes = 1
 
 weights = {
-    'hidden': tf.Variable(tf.random_normal([n_input, HIDDEN_SIZE], stddev=0.1)),  # Hidden layer weights
-    'out': tf.Variable(tf.random_normal([HIDDEN_SIZE * 2, n_classes], stddev=0.1))
+    'hidden': tf.Variable(tf.random_normal([n_input, HIDDEN_SIZE], stddev=0.1), name='weight_hid', dtype=tf.float32),
+# Hidden layer weights
+    'out': tf.Variable(tf.random_normal([HIDDEN_SIZE * 2, n_classes], stddev=0.1), name='weight_out', dtype=tf.float32)
 }
 biases = {
-    'hidden': tf.Variable(tf.random_normal([HIDDEN_SIZE], stddev=0.1)),
-    'out': tf.Variable(tf.random_normal([n_classes], stddev=0.1), name='biases')
+    'hidden': tf.Variable(tf.random_normal([HIDDEN_SIZE], stddev=0.1), name='bias_hid', dtype=tf.float32),
+    'out': tf.Variable(tf.random_normal([n_classes], stddev=0.1), name='bias_out', dtype=tf.float32)
 }
-
 
 w_omega = tf.Variable(tf.random_normal([HIDDEN_SIZE * 2, ATTENTION_SIZE], stddev=0.1))
 b_omega = tf.Variable(tf.random_normal([ATTENTION_SIZE], stddev=0.1))
@@ -176,7 +181,6 @@ u_omega = tf.Variable(tf.random_normal([ATTENTION_SIZE], stddev=0.1))
 
 
 def lstm_model(X, y, is_training):
-
     # 规整成矩阵数据
     X = tf.reshape(X, [-1, TIMESTEPS, n_input])
 
@@ -192,7 +196,6 @@ def lstm_model(X, y, is_training):
     # cell = tf.nn.rnn_cell.MultiRNNCell([
     #     tf.nn.rnn_cell.BasicLSTMCell(HIDDEN_SIZE, forget_bias=1.0, state_is_tuple=True)
     #     for _ in range(NUM_LAYERS)])
-
 
     # 使用TensorFlow接口将多层的LSTM结构连接成RNN网络并计算其前向传播结果。
     # X = tf.split(X, TIMESTEPS, 0)
@@ -217,10 +220,11 @@ def lstm_model(X, y, is_training):
     y = tf.reshape(y, [-1, 1])
     loss = tf.reduce_sum(tf.sqrt(tf.multiply(tf.squared_difference(y, predictions),
                                              tf.cast(tf.logical_and(tf.less(y, tf.zeros_like(y) - 0.01),
-                                                                    tf.greater(predictions, tf.zeros_like(y) + 0.01)), tf.float32) * 4 +
-    #                                 #tf.cast(tf.less(y, predictions), tf.float32) * 1 +
-                                 tf.ones_like(y))))
-    #loss = tf.losses.mean_squared_error(labels=y, predictions=predictions)
+                                                                    tf.greater(predictions, tf.zeros_like(y) + 0.01)),
+                                                     tf.float32) * 4 +
+                                             #                                 #tf.cast(tf.less(y, predictions), tf.float32) * 1 +
+                                             tf.ones_like(y))))
+    # loss = tf.losses.mean_squared_error(labels=y, predictions=predictions)
 
     # pred = tf.argmax(predictions, 1)
     # loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=pred))
@@ -246,6 +250,7 @@ def run_day_eval(sess, test):
         ds = tf.data.Dataset.from_tensor_slices((test_X, test_y))
         ds = ds.batch(1)
         X, y = ds.make_one_shot_iterator().get_next()
+        X = tf.cast(X, tf.float32)
 
         # 调用模型得到计算结果。这里不需要输入真实的y值。
         with tf.variable_scope("eval", reuse=True):
@@ -265,7 +270,6 @@ def run_day_eval(sess, test):
         hit_rate.append(hit / 10.)
         print('\n-------------\n')
     print('hit rate: {}'.format(np.array(hit_rate).mean()))
-
 
 
 def run_eval(sess, test_X, test_y):
@@ -300,11 +304,10 @@ def run_eval(sess, test_X, test_y):
     plt.show()
 
 
-
 # 将训练数据以数据集的方式提供给计算图。
-#tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
-#tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
-#t_X, t_y = tds.make_one_shot_iterator().get_next()
+# tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
+# tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
+# t_X, t_y = tds.make_one_shot_iterator().get_next()
 
 
 # 定义模型，得到预测结果、损失函数，和训练操作。
@@ -313,7 +316,7 @@ with tf.variable_scope("model"):
 
 saver = tf.train.Saver()
 
-with tf.Session() as sess:
+with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
     sess.run(tf.global_variables_initializer())
 
     # 测试在训练之前的模型效果。
