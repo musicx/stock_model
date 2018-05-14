@@ -65,7 +65,7 @@ def attention(inputs, attention_vars, time_major=False, return_alphas=False):
     with tf.name_scope('v'):
         # Applying fully connected layer with non-linear activation to each of the B*T timestamps;
         #  the shape of `v` is (B,T,D)*(D,A)=(B,T,A), where A=attention_size
-        v = tf.tanh(tf.tensordot(inputs, w_omega, axes=1) + b_omega)
+        v = tf.nn.relu(tf.tensordot(inputs, w_omega, axes=1) + b_omega)
 
     # For each of the timestamps its vector of size A from `v` is reduced with `u` vector
     vu = tf.tensordot(v, u_omega, axes=1, name='vu')  # (B,T) shape
