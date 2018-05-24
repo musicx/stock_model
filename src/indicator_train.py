@@ -105,15 +105,14 @@ def check(signal, days):
                                        for x in (range(days) if days >= 0 else range(-1, days-1, -1))])
 
 
-labels = pd.read_csv('../data/6_in_9.csv')
-labels.set_index(['date', 'code'], inplace=True)
+labels = pd.read_csv('../data/6_in_9.csv', dtype={'code': np.object}, parse_dates=['date'])
 
-pfive = []
-plabel = []
-start = []
+BACK_DAYS = 90
+train = []
+test = []
 stocks = qa.QA_fetch_stock_list_adv()
 stock_list = stocks.code.tolist()
-for stock in stock_list[:1]:
+for stock in stock_list:
     print('handling %s' % stock)
     try:
         candles = qa.QA_fetch_stock_day_adv(stock, start='2014-01-01', end='2018-05-22').to_qfq()
@@ -144,30 +143,38 @@ for stock in stock_list[:1]:
     quant = pd.concat([candles.data.loc[:, ['open', 'close', 'high', 'low']], boll_13, boll_20, boll_99], axis=1)
     vol = pd.DataFrame(candles.vol)
 
-    examples_unquant = pd.concat([unquant.shift(x).rename(columns=dict([(n, '{}_d{}'.format(n, x)) for n in unquant.columns])) for x in range(90)], axis=1)
-    examples_quant = pd.concat([quant.shift(x).rename(columns=dict([(n, '{}_d{}'.format(n, x)) for n in quant.columns])) for x in range(90)], axis=1) / quant.close - 1
-    examples_vol = pd.concat([vol.shift(x).rename(columns=dict([(n, '{}_d{}'.format(n, x)) for n in vol.columns])) for x in range(90)], axis=1) / vol.vol
+    examples_unquant = pd.concat([unquant.shift(x).rename(columns=dict([(n, '{}_d{}'.format(n, x)) for n in unquant.columns])) for x in range(BACK_DAYS)], axis=1)
+    examples_quant = pd.concat([quant.shift(x).rename(columns=dict([(n, '{}_d{}'.format(n, x)) for n in quant.columns])) for x in range(BACK_DAYS)], axis=1).div(quant.close, axis=0) - 1
+    examples_vol = pd.concat([vol.shift(x).rename(columns=dict([(n, '{}_d{}'.format(n, x)) for n in vol.columns])) for x in range(BACK_DAYS)], axis=1).div(vol.volume, axis=0)
 
     example = pd.concat([examples_quant, examples_unquant, examples_vol], axis=1).fillna(0)
-    start.append(example.loc[labels.loc[labels.code == stock, :].index, :])
+    # print(example.head())
 
-five = pd.concat(start)
+    stock_label = labels.loc[labels.code == stock, ['date', 'code', 'up', 'mid']]
+    # print(stock_label.head())
 
-dd = pd.concat([five, labels], axis=1)
-# dd.to_csv('../data/6_in_9.csv')
-print(dd.head(20))
+    full = pd.merge(example.reset_index(), stock_label, on=['date', 'code'])
+    train.append(full.iloc[:-3, :])
+    test.append(full.iloc[-3:, :])
+
+data = pd.concat(train)
+test = pd.concat(test)
+
+# print(data.head(20))
+data.to_hdf('../data/indi_train.hdf', 'data')
+test.to_hdf('../data/indi_test.hdf', 'data')
 
 
-# clf = linear_model.Lasso(alpha=0.1)
-# clf.fit(five.fillna(0).values, label.fillna(0).values)
-# print(five.columns)
-# print(clf.coef_)
-# map(lambda x: print(x), zip(five.columns, clf.coef_))
-#
-# pred = clf.predict(five.fillna(0).values)
-# label['pred'] = pred
-#
-# label.to_csv('../data/lasso_pred.csv')
+clf = linear_model.Lasso(alpha=0.1)
+clf.fit(data.iloc[:, 2: 3153].values, data.iloc[:, 3153].values)
+for col, cof in zip(data.columns[2: 3153], clf.coef_):
+    if cof != 0:
+        print(col, cof)
+
+pred = clf.predict(test.iloc[:, 2: 3153].values)
+test['pred'] = pred
+
+test.loc[:, ['date', 'code', 'up', 'mid', 'pred']].to_csv('../data/lasso_pred.csv', index=False)
 #
 # train = pd.concat([five, label], axis=1).fillna(0)
 # splitter = BinSplitter(bad_name='p3',
