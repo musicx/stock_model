@@ -10,7 +10,7 @@ TRAIN = 1
 if TRAIN:
     train = pd.read_hdf('../data/indi_train.hdf', 'data')
     print('training data read')
-    mod, vals = ft.train_random_forest(train, 'up', ignores=['date', 'code', 'mid'], num_trees=1000, samples_split=3, sample_leaf=2, magic_number=206)
+    mod, vals = ft.train_random_forest(train, 'up', ignores=['date', 'code', 'mid'], num_trees=1000, samples_split=10, sample_leaf=5, magic_number=206)
     print('model trained')
 
     for name, imp in zip(vals, mod.feature_importances_):

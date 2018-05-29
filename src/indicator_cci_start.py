@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import QUANTAXIS as qa
-from sklearn import linear_model
 from functools import reduce
 
 
@@ -25,6 +24,7 @@ def CCI(data, N=14):
     return pd.DataFrame({
         'CCI': cci, 'a': a, 'b': b
     })
+
 
 def cci_buy(data, T=-100):
     ind = pd.DataFrame({'CCI_BUY': pd.concat([data['CCI'] > T,
@@ -114,81 +114,88 @@ def cross_boll_upper(data, boll):
     return pd.DataFrame({'CROSS': ind})
 
 
+def go_up(data, N=8, P=4):
+    ind = (data.close > data.open) * 1
+    checked = check(ind, -N)
+    return pd.DataFrame({'GOUP': (checked > P) * 1})
+
+
 def check(signal, days):
     return reduce(lambda x, y: x + y, [signal.shift(x).fillna(0)
                                        for x in (range(days) if days >= 0 else range(-1, days-1, -1))])
 
 
-labels = pd.read_csv('../data/cci_start.csv', dtype={'code': np.object}, parse_dates=['date'])
-
-BACK_DAYS = 90
-train = []
-test = []
+pfive = []
+plabel = []
+chosen = []
 stocks = qa.QA_fetch_stock_list_adv()
 stock_list = stocks.code.tolist()
 for stock in stock_list:
     print('handling %s' % stock)
     try:
-        candles = qa.QA_fetch_stock_day_adv(stock, start='2014-01-01', end='2018-05-24').to_qfq()
+        candles = qa.QA_fetch_stock_day_adv(stock, start='2014-01-01', end='2018-05-22').to_qfq()
     except:
         print('data error during {}'.format(stock))
         continue
 
-    try:
-        skdj_9_3 = candles.add_func(qa.QA_indicator_SKDJ, N=9, M=3).rename(columns={'SKDJ_D': 'SKDJ_D_9_3', 'SKDJ_K': 'SKDJ_K_9_3'})
-        cci_14 = candles.add_func(CCI, N=14)['CCI'].rename(columns={'CCI': 'CCI_14'})
-        cci_83 = candles.add_func(CCI, N=83)['CCI'].rename(columns={'CCI': 'CCI_83'})
-        macd_12_26 = candles.add_func(qa.QA_indicator_MACD, short=12, long=26, mid=9).rename(columns={'DIF': 'DIF_12_26', 'DEA': 'DEA_12_26', 'MACD': 'MACD_12_26'})
-        roc_25 = candles.add_func(ROC, N=25).rename(columns={'ROC': 'ROC_25', 'MAROC': 'MAROC_25', 'EMAROC': 'EMAROC_25'})
-        dtgf = candles.add_func(DTGF, N=21).rename(columns={'FAST': 'DTGF_FAST', 'SLOW': 'DTGF_SLOW'})
-        bdzw = candles.add_func(BDZW).rename(columns={'FAST': 'BDZW_FAST', 'SLOW': 'BDZW_SLOW'})
-        jmdd = candles.add_func(JMDD).rename(columns={'FAST': 'JMDD_FAST', 'SLOW': 'JMDD_SLOW'})
-        mdz = candles.add_func(MDZ).rename(columns={'FAST': 'MDZ_FAST', 'SLOW': 'MDZ_SLOW'})
-        lwr_9 = candles.add_func(LWR, N=9, M=3).rename(columns={'FAST': 'LWR_SLOW_9', 'SLOW': 'LWR_FAST_9'})
+    # candles = qa.QA_fetch_stock_day_adv(stock, start='2014-01-01', end='2018-05-02').to_qfq()
 
-        boll_99 = candles.add_func(qa.QA_indicator_BOLL, N=99).rename(columns={'BOLL': 'BOLL_99', 'UB': 'UB_99', 'LB': 'LB_99'})
-        boll_20 = candles.add_func(qa.QA_indicator_BOLL, N=20).rename(columns={'BOLL': 'BOLL_20', 'UB': 'UB_20', 'LB': 'LB_20'})
-        boll_13 = candles.add_func(qa.QA_indicator_BOLL, N=13).rename(columns={'BOLL': 'BOLL_13', 'UB': 'UB_13', 'LB': 'LB_13'})
+    try:
+        skdj_9_3 = candles.add_func(qa.QA_indicator_SKDJ, N=9, M=3)  # [['SKDJ_K', 'SKDJ_D']]  # .rename(columns={'SKDJ_D': 'SKDJ_D_9_3', 'SKDJ_K': 'SKDJ_K_9_3'})
+        cci_14 = candles.add_func(CCI, N=14)  # ['CCI']    # .rename(columns={'CCI': 'CCI_14'})
+        #cci_83 = candles.add_func(qa.QA_indicator_CCI, N=83)  # ['CCI']    # .rename(columns={'CCI': 'CCI_83'})
+        # macd_12_26 = candles.add_func(qa.QA_indicator_MACD, short=12, long=26, mid=9)  # [['DIF', 'DEA', 'MACD']]    # .rename(columns={'DIF': 'DIF_12_26', 'DEA': 'DEA_12_26', 'MACD': 'MACD_12_26'})
+        # boll_99 = candles.add_func(qa.QA_indicator_BOLL, N=99)
+        # roc_25 = candles.add_func(ROC, N=25)
+        # dtgf_21 = candles.add_func(DTGF, N=21)
+        # bdzw = candles.add_func(BDZW)
+        # jmdd = candles.add_func(JMDD)
+        # mdz = candles.add_func(MDZ)
+        # lwr_9 = candles.add_func(LWR, N=9, M=3)
+
+        buys = [skdj_buy(skdj_9_3),
+                cci_buy(cci_14).rename(columns={'CCI_BUY': 'CCI_BUY_14_low'})
+                # cci_buy(cci_14, 0).rename(columns={'CCI_BUY': 'CCI_BUY_14_mid'})
+                # cci_buy(cci_14, 100).rename(columns={'CCI_BUY': 'CCI_BUY_14_100'}),
+                # cci_buy(cci_83).rename(columns={'CCI_BUY': 'CCI_BUY_83_m100'}),
+                # cci_buy(cci_83, 0).rename(columns={'CCI_BUY': 'CCI_BUY_83_0'}),
+                # cci_buy(cci_83, 100).rename(columns={'CCI_BUY': 'CCI_BUY_83_100'}),
+                # roc_buy(roc_25),
+                # normal_buy(dtgf_21).rename(columns={'NORM_BUY': 'DTGF_BUY'}),
+                # normal_buy(bdzw).rename(columns={'NORM_BUY': 'BDZW_BUY'}),
+                # normal_buy(jmdd).rename(columns={'NORM_BUY': 'JMDD_BUY'}),
+                # normal_buy(mdz).rename(columns={'NORM_BUY': 'MDZ_BUY'}),
+                # normal_buy(lwr_9).rename(columns={'NORM_BUY': 'LWR_BUY'}),
+                # macd_buy(macd_12_26)
+                ]
+        found = candles.add_func(go_up)
     except:
         print('func error during: {}'.format(stock))
         continue
 
-    unquant = pd.concat([skdj_9_3, cci_14, cci_83, macd_12_26, roc_25, lwr_9, dtgf, bdzw, jmdd, mdz], axis=1)
-    quant = pd.concat([candles.data.loc[:, ['open', 'close', 'high', 'low']], boll_13, boll_20, boll_99], axis=1)
-    vol = pd.DataFrame(candles.vol)
-
-    examples_unquant = pd.concat([unquant.shift(x).rename(columns=dict([(n, '{}_d{}'.format(n, x)) for n in unquant.columns])) for x in range(BACK_DAYS)], axis=1)
-    examples_quant = pd.concat([quant.shift(x).rename(columns=dict([(n, '{}_d{}'.format(n, x)) for n in quant.columns])) for x in range(BACK_DAYS)], axis=1).div(quant.close, axis=0) - 1
-    examples_vol = pd.concat([vol.shift(x).rename(columns=dict([(n, '{}_d{}'.format(n, x)) for n in vol.columns])) for x in range(BACK_DAYS)], axis=1).div(vol.volume, axis=0)
-
-    example = pd.concat([examples_quant, examples_unquant, examples_vol], axis=1).fillna(0)
-    # print(example.head())
-
-    stock_label = labels.loc[labels.code == stock, ['date', 'code', 'GOUP']]
-    # print(stock_label.head())
-
-    full = pd.merge(example.reset_index(), stock_label, on=['date', 'code'])
-    train.append(full.iloc[:-3, :])
-    test.append(full.iloc[-3:, :])
-
-data = pd.concat(train)
-test = pd.concat(test)
-
-# print(data.head(20))
-data.to_hdf('../data/indi_train.hdf', 'data')
-test.to_hdf('../data/indi_test.hdf', 'data')
+    indicators = pd.concat(buys, axis=1)
+    chosen.append(found.loc[indicators.sum(axis=1) > 0, :])
+    # pfive.append(pd.concat([indicators,
+    #                         indicators.shift(1).rename(columns=dict([(x, x + "_r1") for x in indicators.columns])),
+    #                         indicators.shift(2).rename(columns=dict([(x, x + "_r2") for x in indicators.columns])),
+    #                         indicators.shift(3).rename(columns=dict([(x, x + "_r3") for x in indicators.columns])),
+    #                         indicators.shift(4).rename(columns=dict([(x, x + "_r4") for x in indicators.columns]))], axis=1))
 
 
-clf = linear_model.Lasso(alpha=0.1)
-clf.fit(data.iloc[:, 2: 3153].values, data.iloc[:, 3153].values)
-for col, cof in zip(data.columns[2: 3153], clf.coef_):
-    if cof != 0:
-        print(col, cof)
+label = pd.concat(chosen)
 
-pred = clf.predict(test.iloc[:, 2: 3153].values)
-test['pred'] = pred
+label.to_csv('../data/cci_start.csv')
 
-test.loc[:, ['date', 'code', 'GOUP', 'pred']].to_csv('../data/lasso_pred.csv', index=False)
+# clf = linear_model.Lasso(alpha=0.1)
+# clf.fit(five.fillna(0).values, label.fillna(0).values)
+# print(five.columns)
+# print(clf.coef_)
+# map(lambda x: print(x), zip(five.columns, clf.coef_))
+#
+# pred = clf.predict(five.fillna(0).values)
+# label['pred'] = pred
+#
+# label.to_csv('../data/lasso_pred.csv')
 #
 # train = pd.concat([five, label], axis=1).fillna(0)
 # splitter = BinSplitter(bad_name='p3',

@@ -210,6 +210,7 @@ fabric.properties
 .idea/httpRequests
 
 
-
+.idea/
 data/
 src/logs/
+model/
