@@ -214,3 +214,5 @@ fabric.properties
 data/
 src/logs/
 model/
+models/
+features/
