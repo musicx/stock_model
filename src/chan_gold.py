@@ -104,5 +104,48 @@ class Line(object):
         self.high_energy = self.low + span * 0.382 if not self.is_bull else self.high - span * 0.382
         self.first_target = self.high + span * 0.618 if self.is_bull else self.low - span * 0.618
         self.second_target = self.high + span * 1.618 if self.is_bull else self.low - span * 1.618
-        self.valid = True
 
+    def tostring(self):
+        return '{} {} to {}'.format(self.start_idx, 'up' if self.is_bull else 'down', self.end_idx)
+
+
+def find_lines(points):
+    lines = [Line(points[0][0], points[1][0], mrg)]
+
+    for idx, point in enumerate(points):
+        if idx < 2:
+            continue
+        if point[1] == 0:
+            lines = [l for l in lines if (mrg[point[0]][1] > l.low_energy and l.is_bull == True) or (mrg[point[0]][3] > l.second_target and l.is_bull == False)]
+            starts = [l.start_idx for l in lines if l.is_bull == False and l.end > mrg[point[0]][3]]
+            lines.extend([Line(x, point[0], mrg) for x in starts] + [Line(points[idx-1][0], point[0], mrg)])
+        else:
+            lines = [l for l in lines if (mrg[point[0]][1] < l.low_energy and l.is_bull == False) or (mrg[point[0]][2] < l.second_target and l.is_bull == True)]
+            starts = [l.start_idx for l in lines if l.is_bull == True and l.end < mrg[point[0]][2]]
+            lines.extend([Line(x, point[0], mrg) for x in starts] + [Line(points[idx-1][0], point[0], mrg)])
+
+    return lines
+
+
+lines = find_lines(valid)
+support = set()
+pressure = set()
+
+for l in lines:
+    if l.is_bull:
+        support.add((l.low_energy, '0.382 of {} up to {}'.format(l.start_idx, l.end_idx)))
+        support.add((l.mid_energy, '0.5 of {} up to {}'.format(l.start_idx, l.end_idx)))
+        support.add((l.high_energy, '0.618 of {} up to {}'.format(l.start_idx, l.end_idx)))
+        pressure.add((l.high, 'high of {} up to {}'.format(l.start_idx, l.end_idx)))
+        pressure.add((l.first_target, '1.618 of {} up to {}'.format(l.start_idx, l.end_idx)))
+        pressure.add((l.second_target, '2.618 of {} up to {}'.format(l.start_idx, l.end_idx)))
+    else:
+        pressure.add((l.low_energy, '0.382 of {} down to {}'.format(l.start_idx, l.end_idx)))
+        pressure.add((l.mid_energy, '0.5 of {} down to {}'.format(l.start_idx, l.end_idx)))
+        pressure.add((l.high_energy, '0.618 of {} down to {}'.format(l.start_idx, l.end_idx)))
+        support.add((l.low, 'low of {} down to {}'.format(l.start_idx, l.end_idx)))
+        support.add((l.first_target, '1.618 of {} down to {}'.format(l.start_idx, l.end_idx)))
+        support.add((l.second_target, '2.618 of {} down to {}'.format(l.start_idx, l.end_idx)))
+
+sup = sorted(list(support), key=lambda x: x[0], reverse=True)
+pre = sorted(list(pressure), key=lambda x: x[0])
