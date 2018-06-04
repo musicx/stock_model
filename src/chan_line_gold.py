@@ -170,29 +170,34 @@ def find_strokes(points, merged_ochl_list):
     return strokes
 
 
-
-
 if __name__ == '__main__':
 
-    can = qa.QA_fetch_stock_day_adv('000002', start='2017-06-01', end='2018-05-30').to_qfq()
+    can = qa.QA_fetch_stock_day_adv('002910', start='2017-06-01', end='2018-06-01').to_qfq()
     raw = can.data.loc[:, ['open', 'close', 'high', 'low']].values
     dates = can.data.date
 
     merged, merged_dates, merged_cnt = merge_ochl(raw, dates)
     ends = find_endpoints(merged, merged_cnt)
     strokes = find_strokes(ends, merged)
+    strokes_after = find_strokes(ends + [[len(merged) - 1, not ends[-1][1], True]], merged)
 
+    support_before = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
+                             for stroke in strokes for item in stroke.support], key=lambda x: x[0], reverse=True)
     support = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
-                      for stroke in strokes for item in stroke.support], key=lambda x: x[0], reverse=True)
+                      for stroke in strokes_after for item in stroke.support], key=lambda x: x[0], reverse=True)
     pressure = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
-                       for stroke in strokes for item in stroke.pressure], key=lambda x: x[0])
+                       for stroke in strokes_after for item in stroke.pressure], key=lambda x: x[0])
 
     print('current price: {}, {}'.format(dates[-1], raw[-1]))
 
-    print('support')
-    for pre in support:
-        print('{:0.2f},\t{}'.format(pre[0], pre[1]))
+    print('support before')
+    for sup in support_before:
+        print('{:0.2f},\t{:0.4f},\t{}'.format(sup[0], sup[0] / raw[-1][1], sup[1]))
+
+    print('support after')
+    for sup in support:
+        print('{:0.2f},\t{:0.4f},\t{}'.format(sup[0], sup[0] / raw[-1][1], sup[1]))
 
     print('pressure')
     for pre in pressure:
-        print('{:0.2f},\t{}'.format(pre[0], pre[1]))
+        print('{:0.2f},\t{:0.4f},\t{}'.format(pre[0], pre[0] / raw[-1][1], pre[1]))
