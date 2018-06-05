@@ -69,13 +69,18 @@ for items in data_forbacktest.panel_gen:
                     QA.QA_Event(order=order, market_data=item)))
     Account.settle()
 
+print('account history')
 print(Account.history)
+print('account history table')
 print(Account.history_table)
+print('account daily hold')
 print(Account.daily_hold)
 
 # create Risk analysis
 Risk = QA.QA_Risk(Account)
+print('risk message')
 print(Risk.message)
+print('risk assets')
 print(Risk.assets)
 Risk.plot_assets_curve()
 Risk.plot_dailyhold()
