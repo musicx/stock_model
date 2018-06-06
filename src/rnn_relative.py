@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import os
 import QUANTAXIS as qa
 import datetime as dt
@@ -38,7 +38,7 @@ def prepare_label_with_relative_position(stocks):
     full = pd.concat(data)
     full['rnk'] = full.groupby('date').transform(lambda x: x.rank())['ret']
     full['label'] = (full.rnk >= (len(data) * 0.5 + 1)) * 1
-    full.loc[:, 'date'] = full['date'].apply(str)
+    full.loc[:, 'date'] = full['date'].apply(lambda x: str(x)[:10])
     return full.loc[:, ['date', 'code', 'label']]
 
 
@@ -68,7 +68,7 @@ def generate_min_data(stocks, valid_date, test_date):
             days.append(np.insert(day.close.values, 0, day.open[0]))
             valid_period += 1 if candles.ix[x*INTERVAL, 'date'] >= valid_date else 0
             test_period += 1 if candles.ix[x*INTERVAL, 'date'] >= test_date else 0
-            dates.append(candles.ix[x*INTERVAL, 'date'])
+            dates.append(candles.ix[x*INTERVAL, 'date'][:10])
         cdata = pd.DataFrame(days)
         if cdata.shape[0] < 200:  # if trade days are less than XXX, ignore the stock
             print('trade days too short: {}'.format(stock))
@@ -197,8 +197,8 @@ def run_day_eval(sess, test):
 
 
 def run_valid(sess, valid):
-    valid_X = valid.drop(columns=['date', 'code', 'label']).values
-    valid_y = valid.loc[:, 'label'].values
+    valid_X = valid.drop(columns=['date', 'code', 'label']).values.astype(np.float32)
+    valid_y = valid.loc[:, 'label'].values.astype(np.float32)
 
     # 将测试数据以数据集的方式提供给计算图。
     ds = tf.data.Dataset.from_tensor_slices((valid_X, valid_y)).batch(1)
@@ -227,7 +227,7 @@ def run_valid(sess, valid):
 
 
 def run_test(sess, test):
-    test_X = test.drop(columns=['date', 'code']).values
+    test_X = test.drop(columns=['date', 'code']).values.astype(np.float32)
 
     # 将测试数据以数据集的方式提供给计算图。
     ds = tf.data.Dataset.from_tensor_slices(test_X).batch(1)
@@ -284,8 +284,8 @@ if __name__ == '__main__':
     u_omega = tf.Variable(tf.random_normal([ATTENTION_SIZE], stddev=0.1))
 
     # 将训练数据以数据集的方式提供给计算图。
-    train_X = train.drop(columns=['date', 'code', 'label']).values
-    train_y = train.loc[:, 'label'].values
+    train_X = train.drop(columns=['date', 'code', 'label']).values.astype(np.float32)
+    train_y = train.loc[:, 'label'].values.astype(np.float32)
 
     # train_y = np.array([train_y, -(train_y - 1)]).T   # need this ?
 
