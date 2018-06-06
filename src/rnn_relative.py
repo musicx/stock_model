@@ -7,14 +7,15 @@ import QUANTAXIS as qa
 import datetime as dt
 from attention import attention
 from index import *
+import sys
 
-start_date = dt.date(2013, 1, 1)
+start_date = dt.date(2015, 1, 1)
 end_date = dt.date(2018, 6, 6)
 
 HIDDEN_SIZE = 128                            # LSTM中隐藏节点的个数。
 NUM_LAYERS = 1                               # LSTM的层数。
-TIMESTEPS = 100                              # 循环神经网络的训练序列长度。
-TRAINING_STEPS = 5000                      # 训练轮数。
+TIMESTEPS = 50                               # 循环神经网络的训练序列长度。
+TRAINING_STEPS = 5000                        # 训练轮数。
 BATCH_SIZE = 128                             # batch大小。
 EPOCH_NUM = 200
 
@@ -23,61 +24,10 @@ pvars = ['open', 'close', 'high', 'low']
 INTERVAL = 240 // 5                        # 每天打点的数量
 ATTENTION_SIZE = 64
 MIN = True
-TEST_PERIOD = 100
 FUTURE_DAYS = 10
 
 
-def generate_data(stock):
-    if os.path.exists("idata_000001.npy"):
-        data = np.load('idata_000001.npy')
-        label = np.load('ilabel_000001.npy')
-    elif INDEX:
-        import QUANTAXIS as qa
-        candles = qa.QA_fetch_index_min('000001', start='2015-01-01', end='2018-05-08',
-                                        format='pandas', frequence='5min')
-        days = []
-        for x in range(candles.shape[0] // INTERVAL):
-            day = candles.ix[x*INTERVAL : (x+1)*INTERVAL, ['open', 'close']]
-            days.append(np.insert(day.close.values, 0, day.open[0]))
-        cdata = pd.DataFrame(days)
-
-        pdata = []
-        plabel = []
-        for x in range(cdata.shape[0]-TIMESTEPS):
-            # mid.append(cdata.iloc[x: x+TIMESTEPS, :])
-            day = cdata.iloc[x: x+TIMESTEPS, :] / cdata.iloc[x+TIMESTEPS-1, -1] - 1
-            pdata.append(day.values.flatten())
-            plabel.append(cdata.iloc[x+TIMESTEPS, -1] / cdata.iloc[x+TIMESTEPS-1, -1] - 1)
-        data = np.asarray(pdata, dtype=np.float32)
-        label = np.asarray(plabel, dtype=np.float32)
-        np.save('idata_000001', data)
-        np.save('ilabel_000001', label)
-        print('data saved')
-
-    else:
-        try:
-            import QUANTAXIS as qa
-            candles = qa.QA_fetch_stock_day_adv(stock, start='2014-01-01', end='2018-05-02')
-            cdata = candles.data.reset_index(level=1, drop=True).loc[:, pvars]
-            # mid = []
-            pdata = []
-            plabel = []
-            for x in range(cdata.shape[0]-TIMESTEPS-3):
-                # mid.append(cdata.iloc[x: x+TIMESTEPS, :])
-                day = cdata.iloc[x: x+TIMESTEPS, :] / cdata.ix[x+TIMESTEPS-1, 'close'] - 1
-                pdata.append(day.values.flatten())
-                plabel.append((cdata.ix[x+TIMESTEPS+3, 'close'] / cdata.ix[x+TIMESTEPS, 'open'] - 1) > 0.05)
-            data = np.asarray(pdata, dtype=np.float32)
-            label = np.asarray(plabel, dtype=np.float32)
-            np.save('data_000001', data)
-            np.save('label_000001', label)
-            print('data saved')
-        except Exception as e:
-            print(e.message)
-    return data, label
-
-
-def prepare_label(stocks):
+def prepare_label_with_relative_position(stocks):
     data = []
     for stock in stocks:
         try:
@@ -87,66 +37,72 @@ def prepare_label(stocks):
         except:
             continue
     full = pd.concat(data)
-    full['rnk'] = full.groupby('date').transform(lambda x: x.rank())
-    full['label'] = (full.rnk >= (len(stocks) * 0.5 + 1)) * 1
+    full['rnk'] = full.groupby('date').transform(lambda x: x.rank())['ret']
+    full['label'] = (full.rnk >= (len(data) * 0.5 + 1)) * 1
+    full.loc[:, 'date'] = full['date'].apply(str)
     return full.loc[:, ['date', 'code', 'label']]
 
 
-def generate_min_data(stocks, valid, test):
+def generate_min_data(stocks, valid_date, test_date):
     train_data = []
-    train_label = []
     valid_data = []
-    valid_label = []
     test_data = []
 
-    test_start = end_date - dt.timedelta(days=test)
-    valid_start = end_date - dt.timedelta(days=(valid + test))
+    labels = prepare_label_with_relative_position(stocks)
 
     # use 沪指==000001, possible alternative is 中证800=='000906'
     # base = qa.QA_fetch_index_min('000001', start='2015-01-01', end='2018-05-08', format='pandas', frequence='5min')
-    future_returns = []
     for stock in stocks:
         print('handling %s' % stock)
         try:
-            candles = qa.QA_fetch_stock_min_adv(stock, start=str(start_date), end=str(end_date), frequence='5min').to_qfq()
-            days = []
-            dates = []
-            for x in range(candles.shape[0] // INTERVAL):
-                day = candles.ix[x*INTERVAL: (x+1)*INTERVAL, ['open', 'close']]
-                days.append(np.insert(day.close.values, 0, day.open[0]))
-                dates.append(candles.iloc[x*INTERVAL, :].date)
-            cdata = pd.DataFrame(days)
-            if cdata.shape[0] < 200:  # if trade days are less than XXX, ignore the stock
-                print('trade days too short: {}'.format(stock))
-                continue
+            candles = qa.QA_fetch_stock_min_adv(stock, start=str(start_date), end=str(end_date), frequence='5min').to_qfq().data
         except:
             print('data error: {}'.format(stock))
             continue
 
-        pdata = []
-        for x in range(cdata.shape[0]-TIMESTEPS+1-test):
-            # mid.append(cdata.iloc[x: x+TIMESTEPS, :])
-            today = cdata.iloc[x: x+TIMESTEPS, :] / cdata.iloc[x+TIMESTEPS-1, -1] - 1
-            future_return = cdata.iloc[x+TIMESTEPS+test-1, -1] / cdata.iloc[x+TIMESTEPS-1, -1] - 1 if x < cdata.shape[0]-TIMESTEPS else 0
-            pdata.append(today.values.flatten())
-            future_returns.append([stock, dates[x+TIMESTEPS-1], future_return])
-        try:
-            test = pd.DataFrame(pdata[-TEST_PERIOD:])
-            test['code'] = stock
-            test['date'] = candles.date.unique()[-TEST_PERIOD:]
-            test['label'] = plabel[-TEST_PERIOD:]
-            test_data.append(test)
-            train_data.extend(pdata[:-TEST_PERIOD])
-            train_label.extend(plabel[:-TEST_PERIOD])
-        except:
-            print('error found: {}'.format(stock))
+        days = []
+        valid_period = 0
+        test_period = 0
+        dates = []
+        for x in range(candles.shape[0] // INTERVAL):
+            day = candles.ix[x*INTERVAL: (x+1)*INTERVAL, ['open', 'close']]
+            days.append(np.insert(day.close.values, 0, day.open[0]))
+            valid_period += 1 if candles.ix[x*INTERVAL, 'date'] >= valid_date else 0
+            test_period += 1 if candles.ix[x*INTERVAL, 'date'] >= test_date else 0
+            dates.append(candles.ix[x*INTERVAL, 'date'])
+        cdata = pd.DataFrame(days)
+        if cdata.shape[0] < 200:  # if trade days are less than XXX, ignore the stock
+            print('trade days too short: {}'.format(stock))
             continue
-        # test_data.extend(pdata[-50:])
-        # test_label.extend(plabel[-50:])
-    test = pd.concat(test_data)
-    # test = test.sort_values('date')
-    return np.asarray(train_data, dtype=np.float32), np.asarray(train_label, dtype=np.float32), test
 
+        price_changes = []
+        price_dates = []
+        for x in range(cdata.shape[0]-TIMESTEPS+1):
+            today = cdata.iloc[x: x+TIMESTEPS, :] / cdata.iloc[x+TIMESTEPS-1, -1] - 1
+            price_changes.append(today.values.flatten())
+            price_dates.append(dates[x+TIMESTEPS-1])
+
+        if len(price_changes) > valid_period:
+            train = pd.DataFrame(price_changes[:-valid_period])
+            train['code'] = stock
+            train['date'] = price_dates[:-valid_period]
+            train = pd.merge(train, labels, on=['date', 'code'])
+            train_data.append(train)
+
+        if len(price_changes) > test_period and valid_period > test_period:
+            valid = pd.DataFrame(price_changes[-valid_period:-test_period])
+            valid['code'] = stock
+            valid['date'] = price_dates[-valid_period:-test_period]
+            valid = pd.merge(valid, labels, on=['date', 'code'])
+            valid_data.append(valid)
+
+        if test_period > 0:
+            test = pd.DataFrame(price_changes[-test_period:])
+            test['code'] = stock
+            test['date'] = price_dates[-test_period:]
+            test_data.append(test)
+
+    return pd.concat(train_data), pd.concat(valid_data), pd.concat(test_data)
 
 
 def lstm_model(X, y, is_training):
@@ -283,12 +239,16 @@ if __name__ == '__main__':
     # print(label[:2])
     stocks = [x for x in ZZ800.split('\n') if len(x) > 0]
 
-    train_X, train_y, val_X, val_y, test_X = generate_min_data(stocks, VALID_PERIOD, TEST_PERIOD)
+    train, valid, test = generate_min_data(stocks, '2018-02-01', '2018-05-01')
 
-    np.save('../data/rnn_train', train_X)
-    np.save('../data/rnn_label', train_y)
-    test_df.to_hdf('../data/rnn_test.hdf', 'test')
+    # np.save('../data/rnn_train', train_X)
+    # np.save('../data/rnn_label', train_y)
+    train.to_hdf('../data/rnn_rel_train.hdf', 'data')
+    valid.to_hdf('../data/rnn_rel_valid.hdf', 'data')
+    test.to_hdf('../data/rnn_rel_test.hdf', 'data')
     print('data saved')
+
+    sys.exit(0)
 
     n_input = INTERVAL + 1
     n_classes = 1
