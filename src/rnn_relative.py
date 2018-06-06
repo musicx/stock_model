@@ -19,7 +19,7 @@ NUM_LAYERS = 1                               # LSTM的层数。
 TIMESTEPS = 60                               # 循环神经网络的训练序列长度。
 # TRAINING_STEPS = 5000                        # 训练轮数。
 BATCH_SIZE = 128                             # batch大小。
-EPOCH_NUM = 200
+EPOCH_NUM = 100
 
 pvars = ['open', 'close', 'high', 'low']
 
@@ -162,7 +162,7 @@ def lstm_model(X, y, is_training):
     #                                          tf.ones_like(y))))
     # loss = tf.losses.mean_squared_error(labels=y, predictions=predictions)
     # y = tf.reshape(y, [BATCH_SIZE, 1])
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=predictions, labels=y))
+    loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=predictions, labels=y))
 
     # pred = tf.argmax(predictions, 1)
     # loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=pred))
@@ -267,7 +267,7 @@ def parser(record):
 
     # Perform additional preprocessing on the parsed data.
     label = tf.cast(parsed["Y"], tf.int32)
-    label = tf.stack([label, -(label-1)], axis=-1)
+    # label = tf.stack([label, -(label-1)], axis=-1)
     return parsed['X'], label
 
 
@@ -317,7 +317,7 @@ if __name__ == '__main__':
     tds = tf.data.TFRecordDataset('../data/rnn_rel_train.tfrecords')
     tds = tds.map(parser)
     # tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
-    tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
+    tds = tds.repeat(EPOCH_NUM).shuffle(12800).batch(BATCH_SIZE)
     t_X, t_y = tds.make_one_shot_iterator().get_next()
 
     # 定义模型，得到预测结果、损失函数，和训练操作。
@@ -340,8 +340,9 @@ if __name__ == '__main__':
         # for i in range(TRAINING_STEPS):
         while True:
             try:
-                if step == 0:
-                    data_x, data_y = sess.run([t_X, t_y])
+                # if step == 0:
+                #     data_x, data_y = sess.run([t_X, t_y])
+                #     print('data:\n{}\nlabel:\n{}'.format(data_x, data_y))
                 _, l = sess.run([train_op, loss])
                 if step % 1000 == 0:
                     print("train step: " + str(step) + ", loss: " + str(l))
