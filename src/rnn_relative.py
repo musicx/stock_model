@@ -15,7 +15,7 @@ end_date = dt.date(2018, 6, 6)
 HIDDEN_SIZE = 128                            # LSTM中隐藏节点的个数。
 NUM_LAYERS = 1                               # LSTM的层数。
 TIMESTEPS = 50                               # 循环神经网络的训练序列长度。
-TRAINING_STEPS = 5000                        # 训练轮数。
+# TRAINING_STEPS = 5000                        # 训练轮数。
 BATCH_SIZE = 128                             # batch大小。
 EPOCH_NUM = 200
 
@@ -23,7 +23,6 @@ pvars = ['open', 'close', 'high', 'low']
 
 INTERVAL = 240 // 5                        # 每天打点的数量
 ATTENTION_SIZE = 64
-MIN = True
 FUTURE_DAYS = 10
 
 
@@ -197,24 +196,28 @@ def run_day_eval(sess, test):
     print('hit rate: {}'.format(np.array(hit_rate).mean()))
 
 
+def run_valid(sess, valid):
+    valid_X = valid.drop(columns=['date', 'code', 'label']).values
+    valid_y = valid.loc[:, 'label'].values
 
-def run_eval(sess, test_X, test_y):
     # 将测试数据以数据集的方式提供给计算图。
-    ds = tf.data.Dataset.from_tensor_slices((test_X, test_y))
-    ds = ds.batch(1)
+    ds = tf.data.Dataset.from_tensor_slices((valid_X, valid_y)).batch(1)
     X, y = ds.make_one_shot_iterator().get_next()
 
     # 调用模型得到计算结果。这里不需要输入真实的y值。
-    with tf.variable_scope("model", reuse=True):
+    with tf.variable_scope("valid", reuse=True):
         prediction, _, _ = lstm_model(X, [0.0], False)
 
     # 将预测结果存入一个数组。
     predictions = []
     labels = []
-    for i in range(len(test_X)):
+    for i in range(len(valid_X)):
         p, l = sess.run([prediction, y])
         predictions.append(p)
         labels.append(l)
+
+    valid['predict'] = predictions
+    valid.loc[:, ['date', 'code', 'label', 'predict']].to_csv('../data/rnn_rel_valid_predict.csv', index=False)
 
     # 计算rmse作为评价指标。
     predictions = np.array(predictions).squeeze()
@@ -222,14 +225,26 @@ def run_eval(sess, test_X, test_y):
     rmse = np.sqrt(((predictions - labels) ** 2).mean(axis=0))
     print("Root Mean Square Error is: %f" % rmse)
 
-    # 对预测的sin函数曲线进行绘图。
-    plt.figure()
-    plt.plot(predictions, label='predictions')
-    plt.plot(labels, label='real_close')
-    plt.legend()
-    plt.show()
 
+def run_test(sess, test):
+    test_X = test.drop(columns=['date', 'code']).values
 
+    # 将测试数据以数据集的方式提供给计算图。
+    ds = tf.data.Dataset.from_tensor_slices(test_X).batch(1)
+    X = ds.make_one_shot_iterator().get_next()
+
+    # 调用模型得到计算结果。这里不需要输入真实的y值。
+    with tf.variable_scope("test", reuse=True):
+        prediction, _, _ = lstm_model(X, [0.0], False)
+
+    # 将预测结果存入一个数组。
+    predictions = []
+    for i in range(len(test_X)):
+        p = sess.run(prediction)
+        predictions.append(p)
+
+    test['predict'] = predictions
+    test.loc[:, ['date', 'code', 'predict']].sort_values(['date', 'predict'], ascending=False).to_csv('../data/rnn_rel_test_predict.csv', index=False)
 
 
 if __name__ == '__main__':
@@ -239,16 +254,18 @@ if __name__ == '__main__':
     # print(label[:2])
     stocks = [x for x in ZZ800.split('\n') if len(x) > 0]
 
-    train, valid, test = generate_min_data(stocks, '2018-02-01', '2018-05-01')
+    if os.path.exists('../data/rnn_rel_train.hdf'):
+        train = pd.read_hdf('../data/rnn_rel_train.hdf', 'data')
+        valid = pd.read_hdf('../data/rnn_rel_valid.hdf', 'data')
+        test = pd.read_hdf('../data/rnn_rel_test.hdf', 'data')
+        print('data read')
 
-    # np.save('../data/rnn_train', train_X)
-    # np.save('../data/rnn_label', train_y)
-    train.to_hdf('../data/rnn_rel_train.hdf', 'data')
-    valid.to_hdf('../data/rnn_rel_valid.hdf', 'data')
-    test.to_hdf('../data/rnn_rel_test.hdf', 'data')
-    print('data saved')
-
-    sys.exit(0)
+    else:
+        train, valid, test = generate_min_data(stocks, '2018-02-01', '2018-05-01')
+        train.to_hdf('../data/rnn_rel_train.hdf', 'data')
+        valid.to_hdf('../data/rnn_rel_valid.hdf', 'data')
+        test.to_hdf('../data/rnn_rel_test.hdf', 'data')
+        print('data saved')
 
     n_input = INTERVAL + 1
     n_classes = 1
@@ -267,6 +284,9 @@ if __name__ == '__main__':
     u_omega = tf.Variable(tf.random_normal([ATTENTION_SIZE], stddev=0.1))
 
     # 将训练数据以数据集的方式提供给计算图。
+    train_X = train.drop(columns=['date', 'code', 'label']).values
+    train_y = train.loc[:, 'label'].values
+
     tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
     tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
     t_X, t_y = tds.make_one_shot_iterator().get_next()
@@ -294,11 +314,14 @@ if __name__ == '__main__':
                 _, l = sess.run([train_op, loss])
                 if step % 1000 == 0:
                     print("train step: " + str(step) + ", loss: " + str(l))
-                    saver.save(sess, '../model/rnn0508', global_step=step)
+                    saver.save(sess, '../model/rnn0606', global_step=step)
             except tf.errors.OutOfRangeError as e:
                 break
             step += 1
 
         # 使用训练好的模型对测试数据进行预测。
         print("Evaluate model after training.")
-        run_day_eval(sess, test_df)
+        run_valid(sess, valid)
+
+        print('Predict test values')
+        run_day_eval(sess, test)
