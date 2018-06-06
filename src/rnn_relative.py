@@ -14,7 +14,7 @@ end_date = dt.date(2018, 6, 6)
 
 HIDDEN_SIZE = 128                            # LSTM中隐藏节点的个数。
 NUM_LAYERS = 1                               # LSTM的层数。
-TIMESTEPS = 50                               # 循环神经网络的训练序列长度。
+TIMESTEPS = 60                               # 循环神经网络的训练序列长度。
 # TRAINING_STEPS = 5000                        # 训练轮数。
 BATCH_SIZE = 128                             # batch大小。
 EPOCH_NUM = 200
@@ -254,17 +254,17 @@ if __name__ == '__main__':
     # print(label[:2])
     stocks = [x for x in ZZ800.split('\n') if len(x) > 0]
 
-    if os.path.exists('../data/rnn_rel_train.hdf'):
-        train = pd.read_hdf('../data/rnn_rel_train.hdf', 'data')
-        valid = pd.read_hdf('../data/rnn_rel_valid.hdf', 'data')
-        test = pd.read_hdf('../data/rnn_rel_test.hdf', 'data')
+    if os.path.exists('../data/rnn_rel_train.csv'):
+        train = pd.read_csv('../data/rnn_rel_train.csv')
+        valid = pd.read_csv('../data/rnn_rel_valid.csv')
+        test = pd.read_csv('../data/rnn_rel_test.csv')
         print('data read')
 
     else:
         train, valid, test = generate_min_data(stocks, '2018-02-01', '2018-05-01')
-        train.to_hdf('../data/rnn_rel_train.hdf', 'data')
-        valid.to_hdf('../data/rnn_rel_valid.hdf', 'data')
-        test.to_hdf('../data/rnn_rel_test.hdf', 'data')
+        train.to_csv('../data/rnn_rel_train.csv', index=False)
+        valid.to_csv('../data/rnn_rel_valid.csv', index=False)
+        test.to_csv('../data/rnn_rel_test.csv', index=False)
         print('data saved')
 
     n_input = INTERVAL + 1
