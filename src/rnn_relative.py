@@ -136,29 +136,29 @@ def lstm_model(X, y, is_training):
     # 平方差损失函数。
     predictions = tf.matmul(attention_output, weights['out'], name='logits_rnn_out') + biases['out']
 
+    prob = predictions[:, 1]
     # predictions = tf.contrib.layers.fully_connected(output, 1, activation_fn=None)
 
     # 只在训练时计算损失函数和优化步骤。测试时直接返回预测结果。
     if not is_training:
-        return predictions, None, None
+        return prob, None, None
 
     # 计算损失函数。
-    y = tf.reshape(y, [-1, 1])
-    loss = tf.reduce_sum(tf.sqrt(tf.multiply(tf.squared_difference(y, predictions),
-                                             tf.cast(tf.logical_and(tf.less(y, tf.zeros_like(y) - 0.01),
-                                                                    tf.greater(predictions, tf.zeros_like(y) + 0.01)), tf.float32) * 4 +
-                                             #                                 #tf.cast(tf.less(y, predictions), tf.float32) * 1 +
-                                             tf.ones_like(y))))
-    #loss = tf.losses.mean_squared_error(labels=y, predictions=predictions)
+    # y = tf.reshape(y, [-1, 1])
+    # loss = tf.reduce_sum(tf.sqrt(tf.multiply(tf.squared_difference(y, predictions),
+    #                                          tf.cast(tf.logical_and(tf.less(y, tf.zeros_like(y) - 0.01),
+    #                                                                 tf.greater(predictions, tf.zeros_like(y) + 0.01)), tf.float32) * 4 +
+    #                                          #                                 #tf.cast(tf.less(y, predictions), tf.float32) * 1 +
+    #                                          tf.ones_like(y))))
+    # loss = tf.losses.mean_squared_error(labels=y, predictions=predictions)
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=predictions, labels=y))
 
     # pred = tf.argmax(predictions, 1)
     # loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=pred))
 
     # 创建模型优化器并得到优化步骤。
-    train_op = tf.contrib.layers.optimize_loss(
-        loss, tf.train.get_global_step(),
-        optimizer="Adam", learning_rate=0.001)
-    return predictions, loss, train_op
+    train_op = tf.contrib.layers.optimize_loss(loss, tf.train.get_global_step(), optimizer="Adam", learning_rate=0.001)
+    return prob, loss, train_op
 
 
 def run_day_eval(sess, test):
@@ -268,7 +268,7 @@ if __name__ == '__main__':
         print('data saved')
 
     n_input = INTERVAL + 1
-    n_classes = 1
+    n_classes = 2
 
     weights = {
         'hidden': tf.Variable(tf.random_normal([n_input, HIDDEN_SIZE], stddev=0.1)),  # Hidden layer weights
@@ -286,6 +286,8 @@ if __name__ == '__main__':
     # 将训练数据以数据集的方式提供给计算图。
     train_X = train.drop(columns=['date', 'code', 'label']).values
     train_y = train.loc[:, 'label'].values
+
+    # train_y = np.array([train_y, -(train_y - 1)]).T   # need this ?
 
     tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
     tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
