@@ -6,11 +6,13 @@ import os
 import QUANTAXIS as qa
 import datetime as dt
 from attention import attention
+from tfrecord import np_to_tfrecords
 from index import *
+from joblib import Parallel, delayed
 import sys
 
 start_date = dt.date(2015, 1, 1)
-end_date = dt.date(2018, 6, 6)
+end_date = dt.date(2018, 6, 5)
 
 HIDDEN_SIZE = 128                            # LSTM中隐藏节点的个数。
 NUM_LAYERS = 1                               # LSTM的层数。
@@ -27,6 +29,7 @@ FUTURE_DAYS = 10
 
 
 def prepare_label_with_relative_position(stocks):
+    print('prepare label')
     data = []
     for stock in stocks:
         try:
@@ -39,67 +42,74 @@ def prepare_label_with_relative_position(stocks):
     full['rnk'] = full.groupby('date').transform(lambda x: x.rank())['ret']
     full['label'] = (full.rnk >= (len(data) * 0.5 + 1)) * 1
     full.loc[:, 'date'] = full['date'].apply(lambda x: str(x)[:10])
+    print('label prepared:\n{}'.format(full.label.value_counts()))
     return full.loc[:, ['date', 'code', 'label']]
 
 
+def generate_singe_data(stock, labels, valid_date, test_date):
+    print('handling %s' % stock)
+    try:
+        candles = qa.QA_fetch_stock_min_adv(stock, start=str(start_date), end=str(end_date), frequence='5min').to_qfq().data
+    except:
+        print('data error: {}'.format(stock))
+        return None, None, None
+
+    days = []
+    valid_period = 0
+    test_period = 0
+    dates = []
+    for x in range(candles.shape[0] // INTERVAL):
+        day = candles.ix[x*INTERVAL: (x+1)*INTERVAL, ['open', 'close']]
+        days.append(np.insert(day.close.values, 0, day.open[0]))
+        valid_period += 1 if candles.ix[x*INTERVAL, 'date'] >= valid_date else 0
+        test_period += 1 if candles.ix[x*INTERVAL, 'date'] >= test_date else 0
+        dates.append(candles.ix[x*INTERVAL, 'date'][:10])
+    cdata = pd.DataFrame(days)
+    if cdata.shape[0] < 200:  # if trade days are less than XXX, ignore the stock
+        print('trade days too short: {}'.format(stock))
+        return None, None, None
+
+    price_changes = []
+    price_dates = []
+    for x in range(cdata.shape[0]-TIMESTEPS+1):
+        today = cdata.iloc[x: x+TIMESTEPS, :] / cdata.iloc[x+TIMESTEPS-1, -1] - 1
+        price_changes.append(today.values.flatten())
+        price_dates.append(dates[x+TIMESTEPS-1])
+
+    if len(price_changes) > valid_period:
+        train = pd.DataFrame(price_changes[:-valid_period])
+        train['code'] = stock
+        train['date'] = price_dates[:-valid_period]
+        train = pd.merge(train, labels, on=['date', 'code'])
+    else:
+        train = None
+
+    if len(price_changes) > test_period and valid_period > test_period:
+        valid = pd.DataFrame(price_changes[-valid_period:-test_period])
+        valid['code'] = stock
+        valid['date'] = price_dates[-valid_period:-test_period]
+        valid = pd.merge(valid, labels, on=['date', 'code'])
+    else:
+        valid = None
+
+    if test_period > 0:
+        test = pd.DataFrame(price_changes[-test_period:])
+        test['code'] = stock
+        test['date'] = price_dates[-test_period:]
+    else:
+        test = None
+    return train, valid, test
+
+
 def generate_min_data(stocks, valid_date, test_date):
-    train_data = []
-    valid_data = []
-    test_data = []
+    # use 沪指==000001, possible alternative is 中证800=='000906'
 
     labels = prepare_label_with_relative_position(stocks)
 
-    # use 沪指==000001, possible alternative is 中证800=='000906'
-    # base = qa.QA_fetch_index_min('000001', start='2015-01-01', end='2018-05-08', format='pandas', frequence='5min')
-    for stock in stocks:
-        print('handling %s' % stock)
-        try:
-            candles = qa.QA_fetch_stock_min_adv(stock, start=str(start_date), end=str(end_date), frequence='5min').to_qfq().data
-        except:
-            print('data error: {}'.format(stock))
-            continue
-
-        days = []
-        valid_period = 0
-        test_period = 0
-        dates = []
-        for x in range(candles.shape[0] // INTERVAL):
-            day = candles.ix[x*INTERVAL: (x+1)*INTERVAL, ['open', 'close']]
-            days.append(np.insert(day.close.values, 0, day.open[0]))
-            valid_period += 1 if candles.ix[x*INTERVAL, 'date'] >= valid_date else 0
-            test_period += 1 if candles.ix[x*INTERVAL, 'date'] >= test_date else 0
-            dates.append(candles.ix[x*INTERVAL, 'date'][:10])
-        cdata = pd.DataFrame(days)
-        if cdata.shape[0] < 200:  # if trade days are less than XXX, ignore the stock
-            print('trade days too short: {}'.format(stock))
-            continue
-
-        price_changes = []
-        price_dates = []
-        for x in range(cdata.shape[0]-TIMESTEPS+1):
-            today = cdata.iloc[x: x+TIMESTEPS, :] / cdata.iloc[x+TIMESTEPS-1, -1] - 1
-            price_changes.append(today.values.flatten())
-            price_dates.append(dates[x+TIMESTEPS-1])
-
-        if len(price_changes) > valid_period:
-            train = pd.DataFrame(price_changes[:-valid_period])
-            train['code'] = stock
-            train['date'] = price_dates[:-valid_period]
-            train = pd.merge(train, labels, on=['date', 'code'])
-            train_data.append(train)
-
-        if len(price_changes) > test_period and valid_period > test_period:
-            valid = pd.DataFrame(price_changes[-valid_period:-test_period])
-            valid['code'] = stock
-            valid['date'] = price_dates[-valid_period:-test_period]
-            valid = pd.merge(valid, labels, on=['date', 'code'])
-            valid_data.append(valid)
-
-        if test_period > 0:
-            test = pd.DataFrame(price_changes[-test_period:])
-            test['code'] = stock
-            test['date'] = price_dates[-test_period:]
-            test_data.append(test)
+    data = Parallel(n_jobs=4)(delayed(generate_singe_data)(stock, labels, valid_date, test_date) for stock in stocks)
+    train_data = [x[0] for x in data if x[0] is not None]
+    valid_data = [x[1] for x in data if x[1] is not None]
+    test_data = [x[2] for x in data if x[1] is not None]
 
     return pd.concat(train_data), pd.concat(valid_data), pd.concat(test_data)
 
@@ -151,6 +161,7 @@ def lstm_model(X, y, is_training):
     #                                          #                                 #tf.cast(tf.less(y, predictions), tf.float32) * 1 +
     #                                          tf.ones_like(y))))
     # loss = tf.losses.mean_squared_error(labels=y, predictions=predictions)
+    # y = tf.reshape(y, [BATCH_SIZE, 1])
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=predictions, labels=y))
 
     # pred = tf.argmax(predictions, 1)
@@ -198,7 +209,7 @@ def run_day_eval(sess, test):
 
 def run_valid(sess, valid):
     valid_X = valid.drop(columns=['date', 'code', 'label']).values.astype(np.float32)
-    valid_y = valid.loc[:, 'label'].values.astype(np.float32)
+    valid_y = valid.loc[:, 'label'].values.astype(np.int32)
 
     # 将测试数据以数据集的方式提供给计算图。
     ds = tf.data.Dataset.from_tensor_slices((valid_X, valid_y)).batch(1)
@@ -206,7 +217,7 @@ def run_valid(sess, valid):
 
     # 调用模型得到计算结果。这里不需要输入真实的y值。
     with tf.variable_scope("valid", reuse=True):
-        prediction, _, _ = lstm_model(X, [0.0], False)
+        prediction, _, _ = lstm_model(X, None, False)
 
     # 将预测结果存入一个数组。
     predictions = []
@@ -235,7 +246,7 @@ def run_test(sess, test):
 
     # 调用模型得到计算结果。这里不需要输入真实的y值。
     with tf.variable_scope("test", reuse=True):
-        prediction, _, _ = lstm_model(X, [0.0], False)
+        prediction, _, _ = lstm_model(X, None, False)
 
     # 将预测结果存入一个数组。
     predictions = []
@@ -247,6 +258,19 @@ def run_test(sess, test):
     test.loc[:, ['date', 'code', 'predict']].sort_values(['date', 'predict'], ascending=False).to_csv('../data/rnn_rel_test_predict.csv', index=False)
 
 
+def parser(record):
+    features = {
+        'X': tf.FixedLenFeature([(INTERVAL+1)*TIMESTEPS], tf.float32),
+        'Y': tf.FixedLenFeature((), tf.int64)
+    }
+    parsed = tf.parse_single_example(record, features)
+
+    # Perform additional preprocessing on the parsed data.
+    label = tf.cast(parsed["Y"], tf.int32)
+    label = tf.stack([label, -(label-1)], axis=-1)
+    return parsed['X'], label
+
+
 if __name__ == '__main__':
 
     # print(len(data))
@@ -254,17 +278,23 @@ if __name__ == '__main__':
     # print(label[:2])
     stocks = [x for x in ZZ800.split('\n') if len(x) > 0]
 
-    if os.path.exists('../data/rnn_rel_train.csv'):
-        train = pd.read_csv('../data/rnn_rel_train.csv')
-        valid = pd.read_csv('../data/rnn_rel_valid.csv')
-        test = pd.read_csv('../data/rnn_rel_test.csv')
+    if os.path.exists('../data/rnn_rel_valid.hdf'):
+        #train = pd.read_csv('../data/rnn_rel_train.csv', dtype={'code': np.object})
+        valid = pd.read_hdf('../data/rnn_rel_valid.hdf', 'data')
+        test = pd.read_hdf('../data/rnn_rel_test.hdf', 'data')
         print('data read')
 
     else:
         train, valid, test = generate_min_data(stocks, '2018-02-01', '2018-05-01')
-        train.to_csv('../data/rnn_rel_train.csv', index=False)
-        valid.to_csv('../data/rnn_rel_valid.csv', index=False)
-        test.to_csv('../data/rnn_rel_test.csv', index=False)
+
+        train_X = train.drop(columns=['date', 'code', 'label']).values.astype(np.float32)
+        train_y = train.loc[:, 'label'].values.astype(np.int64)
+        train_y = train_y.reshape([train_y.shape[0], 1])
+
+        np_to_tfrecords(train_X, train_y, '../data/rnn_rel_train')
+        # train.to_csv('../data/rnn_rel_train.csv', index=False)
+        valid.to_hdf('../data/rnn_rel_valid.hdf', 'data')
+        test.to_hdf('../data/rnn_rel_test.hdf', 'data')
         print('data saved')
 
     n_input = INTERVAL + 1
@@ -276,7 +306,7 @@ if __name__ == '__main__':
     }
     biases = {
         'hidden': tf.Variable(tf.random_normal([HIDDEN_SIZE], stddev=0.1)),
-        'out': tf.Variable(tf.random_normal([n_classes], stddev=0.1), name='biases')
+        'out': tf.Variable(tf.random_normal([n_classes], stddev=0.1))
     }
 
     w_omega = tf.Variable(tf.random_normal([HIDDEN_SIZE * 2, ATTENTION_SIZE], stddev=0.1))
@@ -284,12 +314,9 @@ if __name__ == '__main__':
     u_omega = tf.Variable(tf.random_normal([ATTENTION_SIZE], stddev=0.1))
 
     # 将训练数据以数据集的方式提供给计算图。
-    train_X = train.drop(columns=['date', 'code', 'label']).values.astype(np.float32)
-    train_y = train.loc[:, 'label'].values.astype(np.float32)
-
-    # train_y = np.array([train_y, -(train_y - 1)]).T   # need this ?
-
-    tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
+    tds = tf.data.TFRecordDataset('../data/rnn_rel_train.tfrecords')
+    tds = tds.map(parser)
+    # tds = tf.data.Dataset.from_tensor_slices((train_X, train_y))
     tds = tds.repeat(EPOCH_NUM).shuffle(1000).batch(BATCH_SIZE)
     t_X, t_y = tds.make_one_shot_iterator().get_next()
 
@@ -313,6 +340,8 @@ if __name__ == '__main__':
         # for i in range(TRAINING_STEPS):
         while True:
             try:
+                if step == 0:
+                    data_x, data_y = sess.run([t_X, t_y])
                 _, l = sess.run([train_op, loss])
                 if step % 1000 == 0:
                     print("train step: " + str(step) + ", loss: " + str(l))
