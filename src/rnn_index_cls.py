@@ -6,12 +6,15 @@ import os
 from attention import attention
 import QUANTAXIS as qa
 
-HIDDEN_SIZE = 32                            # LSTM中隐藏节点的个数。
-NUM_LAYERS = 1                              # LSTM的层数。
+n_input = 5
+n_classes = 2
+
+HIDDEN_SIZE = n_input  # 32                            # LSTM中隐藏节点的个数。
+NUM_LAYERS = 2                              # LSTM的层数。
 TIMESTEPS = 30                              # 循环神经网络的训练序列长度。
 TRAINING_STEPS = 5000                      # 训练轮数。
 BATCH_SIZE = 32                             # batch大小。
-EPOCH_NUM = 1000
+EPOCH_NUM = 100
 
 pvars = ['open', 'close', 'high', 'low']
 
@@ -23,53 +26,68 @@ MIN = True
 TEST_PERIOD = 30
 
 
-def generate_data(stock):
-    candles = qa.QA_fetch_index_day_adv('000001', start='2015-01-01', end='2018-05-08').data
-    cdata = candles.loc[:, pvars]
+def generate_data(stocks):
+    first = True
+    train_X = np.array([])
+    train_y = np.array([])
+    test_X = np.array([])
+    test_y = np.array([])
+    base = qa.QA_fetch_index_day_adv('000001', start='2010-01-01', end='2018-06-02').data
+    for stock in stocks:
+        candles = qa.QA_fetch_stock_day_adv(stock, start='2010-01-01', end='2018-06-02').data
+        cdata = candles.loc[:, pvars]
+        cdata.loc[:, 'base'] = base.close / base.close.shift(1)
+        cdata.loc[:, 'ret'] = cdata.close / cdata.close.shift(1)
+        cdata.loc[:, 'relative'] = cdata.ret - cdata.base
+        cdata.fillna(0, inplace=True)
 
-    pdata = []
-    plabel = []
-    for x in range(cdata.shape[0]-TIMESTEPS):
-        day = cdata.iloc[x: x+TIMESTEPS, :] / cdata.ix[x+TIMESTEPS-1, 'close'] - 1
-        pdata.append(day.values.flatten())
-        ret = cdata.ix[x+TIMESTEPS, 'close'] / cdata.ix[x+TIMESTEPS-1, 'close'] - 1
-        plabel.append(1 if ret > 0.001 else 0)
-    data = np.asarray(pdata, dtype=np.float32)
-    label = np.asarray(plabel, dtype=np.int32)
-    np.save('../data/idata_000001', data)
-    np.save('../data/ilabel_000001', label)
-    print('data saved\n{}'.format(label))
-    return data, label
+        pdata = []
+        plabel = []
+        for x in range(cdata.shape[0]-TIMESTEPS):
+            day = cdata.ix[x: x+TIMESTEPS, pvars] / cdata.ix[x+TIMESTEPS-1, 'close'] - 1
+            day['base'] = cdata.ix[x: x+TIMESTEPS, 'relative']
+            pdata.append(day.values.flatten())
+            # ret = cdata.ix[x+TIMESTEPS, 'close'] / cdata.ix[x+TIMESTEPS-1, 'close'] - 1
+            plabel.append(1 if cdata.ix[x+TIMESTEPS, 'relative'] > 0 else 0)
+        if len(pdata) > TEST_PERIOD:
+            data = np.asarray(pdata, dtype=np.float32)
+            label = np.asarray(plabel, dtype=np.int32)
+            if first:
+                train_X = data[:-TEST_PERIOD]
+                train_y = label[:-TEST_PERIOD]
+                test_X = data[-TEST_PERIOD:]
+                test_y = label[-TEST_PERIOD:]
+                first = False
+            else:
+                train_X = np.r_[train_X, data[:-TEST_PERIOD]]
+                train_y = np.r_[train_y, label[:-TEST_PERIOD]]
+                test_X = np.r_[test_X, data[-TEST_PERIOD:]]
+                test_y = np.r_[test_y, label[-TEST_PERIOD:]]
+
+    # np.save('../data/idata_000001', data)
+    # np.save('../data/ilabel_000001', label)
+    # print('data saved\n{}'.format(label))
+    return train_X, train_y, test_X, test_y
 
 
-data, label = generate_data('000001')
+train_X, train_y, test_X, test_y = generate_data(['000001', '600000'])
 
-print(len(data))
-# print(data[:2])
-# print(label[:2])
-
-train_X = data[:-TEST_PERIOD]
-train_y = label[:-TEST_PERIOD]
-test_X = data[-TEST_PERIOD:]
-test_y = label[-TEST_PERIOD:]
 
 # train_y = np.array([train_y, -(train_y - 1)]).T   # need this ?
 # test_y = np.array([test_y, -(test_y - 1)]).T   # need this ?
-
-n_input = 4
-n_classes = 2
-
 weights = {
     'hidden': tf.Variable(tf.random_normal([n_input, HIDDEN_SIZE], stddev=0.1)),  # Hidden layer weights
-    'out': tf.Variable(tf.random_normal([HIDDEN_SIZE * 2, n_classes], stddev=0.1))
+    'att': tf.Variable(tf.truncated_normal([HIDDEN_SIZE, 128], stddev=0.1)),
+    'out': tf.Variable(tf.truncated_normal([128, n_classes], stddev=0.1))
 }
 biases = {
     'hidden': tf.Variable(tf.random_normal([HIDDEN_SIZE], stddev=0.1)),
-    'out': tf.Variable(tf.random_normal([n_classes], stddev=0.1))
+    'att': tf.Variable(tf.truncated_normal([128], stddev=0.1)),
+    'out': tf.Variable(tf.truncated_normal([n_classes], stddev=0.1))
 }
 
 
-w_omega = tf.Variable(tf.random_normal([HIDDEN_SIZE * 2, ATTENTION_SIZE], stddev=0.1))
+w_omega = tf.Variable(tf.random_normal([HIDDEN_SIZE, ATTENTION_SIZE], stddev=0.1))
 b_omega = tf.Variable(tf.random_normal([ATTENTION_SIZE], stddev=0.1))
 u_omega = tf.Variable(tf.random_normal([ATTENTION_SIZE], stddev=0.1))
 
@@ -79,33 +97,24 @@ def lstm_model(X, y, is_training):
     # 规整成矩阵数据
     X = tf.reshape(X, [-1, TIMESTEPS, n_input])
 
-    ## 规整输入的数据
-    X = tf.transpose(X, [1, 0, 2])  # permute n_steps and batch_size
-    X = tf.reshape(X, [-1, n_input])  # (n_steps*batch_size, n_input)
-    ## 输入层到隐含层，第一次是直接运算
-    X = tf.matmul(X, weights['hidden']) + biases['hidden']  # tf.matmul(a,b)   将矩阵a乘以矩阵b，生成a * b
-
     # 之后使用LSTM
-
     # 使用多层的LSTM结构。
-    # cell = tf.nn.rnn_cell.MultiRNNCell([
-    #     tf.nn.rnn_cell.BasicLSTMCell(HIDDEN_SIZE, forget_bias=1.0, state_is_tuple=True)
-    #     for _ in range(NUM_LAYERS)])
-
+    cell = tf.nn.rnn_cell.MultiRNNCell([tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE) for _ in range(NUM_LAYERS)])
 
     # 使用TensorFlow接口将多层的LSTM结构连接成RNN网络并计算其前向传播结果。
     # X = tf.split(X, TIMESTEPS, 0)
     X = tf.reshape(X, [-1, TIMESTEPS, HIDDEN_SIZE])
-    outputs, _ = tf.nn.bidirectional_dynamic_rnn(tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE),
-                                                 tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE), X, dtype=tf.float32)
+    # outputs, _ = tf.nn.bidirectional_dynamic_rnn(tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE),
+    #                                              tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE), X, dtype=tf.float32)
+    outputs, _ = tf.nn.dynamic_rnn(cell, X, dtype=tf.float32)
     # output = outputs[:, -1, :]
     with tf.name_scope('Attention_layer'):
         attention_output = attention(outputs, (w_omega, b_omega, u_omega), return_alphas=False)
 
-    # 对LSTM网络的输出再做加一层全链接层并计算损失。
-    predictions = tf.matmul(attention_output, weights['out'], name='logits_rnn_out') + biases['out']
-
-    # predictions = tf.contrib.layers.fully_connected(output, 1, activation_fn=None)
+    # 对LSTM网络的输出再做加一层全链接层并计算损失。注意这里默认的损失为平均
+    # 平方差损失函数。
+    after_attention = tf.nn.relu(tf.matmul(attention_output, weights['att']) + biases['att'])
+    predictions = tf.matmul(after_attention, weights['out']) + biases['out']
 
     # prob = predictions[:, 1]
     # 只在训练时计算损失函数和优化步骤。测试时直接返回预测结果。
