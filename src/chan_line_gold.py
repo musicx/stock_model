@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import QUANTAXIS as qa
+import datetime as dt
 
 
 def higher(x, y):
@@ -19,7 +20,7 @@ def merge_ochl(ochl_list, times):
     merged = []
     merged_cnt = []
     merged_last_times = []
-    times = times.tolist()
+    times = [x.strftime('%Y-%m-%d') for x in times.tolist()]
     merge_idx = 0
 
     for raw_idx, ochl in enumerate(ochl_list):
@@ -54,13 +55,13 @@ def find_endpoints(merged_ochl_list, merged_count):
     end = []  # item is (idx in merged list, is top end point, valid end point)
     last = 0
     for idx, ochl in enumerate(merged_ochl_list):
-        if idx < 2:
+        if idx < 1:
             continue
         insert = False
-        if higher(merged_ochl_list[idx - 1], merged_ochl_list[idx - 2]) and higher(merged_ochl_list[idx - 1], ochl):
+        if (idx == 1 or higher(merged_ochl_list[idx - 1], merged_ochl_list[idx - 2])) and higher(merged_ochl_list[idx - 1], ochl):
             end.append([idx - 1, True, True])
             insert = True
-        elif lower(merged_ochl_list[idx - 1], merged_ochl_list[idx - 2]) and lower(merged_ochl_list[idx - 1], ochl):
+        elif (idx == 1 or lower(merged_ochl_list[idx - 1], merged_ochl_list[idx - 2])) and lower(merged_ochl_list[idx - 1], ochl):
             end.append([idx - 1, False, True])
             insert = True
 
@@ -74,7 +75,7 @@ def find_endpoints(merged_ochl_list, merged_count):
             else:
                 end.pop()
                 insert = False
-        elif insert and not (idx - 2 == last and merged_count[last] + merged_count[last + 1] > 2 or idx - 3 > last):
+        elif insert and idx > 1 and not (idx - 2 == last and merged_count[last] + merged_count[last + 1] > 2 or idx - 3 > last):
             end.pop()
             insert = False
 
@@ -92,17 +93,22 @@ class Stroke(object):
         self.high = max(ochl[start_idx][2], ochl[end_idx][2])
         self.low = min(ochl[start_idx][3], ochl[end_idx][3])
         span = self.high - self.low
+        self.low_extreme = self.low + span * 0.238 if self.is_bull else self.high - span * 0.238
         self.low_energy = self.low + span * 0.382 if self.is_bull else self.high - span * 0.382
         self.mid_energy = self.low + span * 0.5
         self.high_energy = self.low + span * 0.382 if not self.is_bull else self.high - span * 0.382
+        self.minor_target = self.high + span * 0.382 if self.is_bull else self.low - span * 0.382
         self.first_target = self.high + span * 0.618 if self.is_bull else self.low - span * 0.618
+        self.major_target = self.high + span if self.is_bull else self.low - span
         self.second_target = self.high + span * 1.618 if self.is_bull else self.low - span * 1.618
 
         within = [(self.low_energy, '0.382 of\t{{}} {} to\t{{}}'.format('up' if self.is_bull else 'down')),
                   (self.mid_energy,  '0.5   of\t{{}} {} to\t{{}}'.format('up' if self.is_bull else 'down')),
                   (self.high_energy, '0.618 of\t{{}} {} to\t{{}}'.format('up' if self.is_bull else 'down'))]
         outside = [(self.high if self.is_bull else self.low, 'end   of\t{{}} {} to\t{{}}'.format('up' if self.is_bull else 'down')),
+                   (self.minor_target, '1.382 of\t{{}} {} to\t{{}}'.format('up' if self.is_bull else 'down')),
                    (self.first_target, '1.618 of\t{{}} {} to\t{{}}'.format('up' if self.is_bull else 'down')),
+                   (self.major_target, '2.0 of\t{{}} {} to\t{{}}'.format('up' if self.is_bull else 'down')),
                    (self.second_target, '2.618 of\t{{}} {} to\t{{}}'.format('up' if self.is_bull else 'down'))]
 
         self.support = within if self.is_bull else outside
@@ -137,10 +143,10 @@ def find_strokes(points, merged_ochl_list):
         if idx < 2:
             continue
         for stroke in strokes:
-            if ((point[1] and ((merged_ochl_list[point[0]][1] > stroke.low_energy and not stroke.is_bull) or
+            if ((point[1] and ((merged_ochl_list[point[0]][1] > stroke.low_extreme and not stroke.is_bull) or
                                (merged_ochl_list[point[0]][2] > stroke.second_target and stroke.is_bull))) or
-                    (not point[1] and ((merged_ochl_list[point[0]][1] > stroke.low_energy and stroke.is_bull) or
-                                       (merged_ochl_list[point[0]][3] > stroke.second_target and not stroke.is_bull)))):
+                    (not point[1] and ((merged_ochl_list[point[0]][1] < stroke.low_extreme and stroke.is_bull) or
+                                       (merged_ochl_list[point[0]][3] < stroke.second_target and not stroke.is_bull)))):
                 stroke.valid = False
                 continue
             stroke.support = [p for p in stroke.support if p[0] < merged_ochl_list[point[0]][3]]
@@ -153,8 +159,6 @@ def find_strokes(points, merged_ochl_list):
 
         strokes = [s for s in strokes if s.valid]
 
-        names = set([s.tostring() for s in strokes])
-
         if point[1]:
             starts = [s.start_idx for s in strokes if s.is_bull == point[1] and s.high < merged_ochl_list[point[0]][2]]
         else:
@@ -164,40 +168,53 @@ def find_strokes(points, merged_ochl_list):
         new_strokes.append(Stroke(valid_points[idx - 1][0], point[0], merged_ochl_list))
 
         for stroke in new_strokes:
-            if stroke.tostring() not in names:
+            if stroke.tostring() not in set([s.tostring() for s in strokes]):
                 strokes.append(stroke)
 
     return strokes
 
 
 if __name__ == '__main__':
+    today = dt.datetime.today()
+    start_date = today - dt.timedelta(days=666)
 
-    can = qa.QA_fetch_stock_day_adv('002910', start='2017-06-01', end='2018-06-01').to_qfq()
-    raw = can.data.loc[:, ['open', 'close', 'high', 'low']].values
-    dates = can.data.date
+    stocks = ['000528', '002049', '300529', '300607', '600518', '600588', '603877']
 
-    merged, merged_dates, merged_cnt = merge_ochl(raw, dates)
-    ends = find_endpoints(merged, merged_cnt)
-    strokes = find_strokes(ends, merged)
-    strokes_after = find_strokes(ends + [[len(merged) - 1, not ends[-1][1], True]], merged)
+    with open('../data/ps_analysis.txt', 'w') as f:
+        for stock in stocks:
+            can = qa.QA_fetch_stock_day_adv(stock, start=start_date.strftime('%Y-%m-%d'),
+                                            end=today.strftime('%Y-%m-%d')).to_qfq()
+            raw = can.data.loc[:, ['open', 'close', 'high', 'low']].values
+            dates = can.data.date
 
-    support_before = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
-                             for stroke in strokes for item in stroke.support], key=lambda x: x[0], reverse=True)
-    support = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
-                      for stroke in strokes_after for item in stroke.support], key=lambda x: x[0], reverse=True)
-    pressure = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
-                       for stroke in strokes_after for item in stroke.pressure], key=lambda x: x[0])
+            merged, merged_dates, merged_cnt = merge_ochl(raw, dates)
+            ends = find_endpoints(merged, merged_cnt)
 
-    print('current price: {}, {}'.format(dates[-1], raw[-1]))
+            strokes = find_strokes(ends, merged)
+            strokes_after = find_strokes(ends + [[len(merged) - 1, not ends[-1][1], True]], merged)
 
-    print('support before')
-    for sup in support_before:
-        print('{:0.2f},\t{:0.4f},\t{}'.format(sup[0], sup[0] / raw[-1][1], sup[1]))
+            support_before = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
+                                     for stroke in strokes for item in stroke.support], key=lambda x: x[0], reverse=True)
+            support = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
+                              for stroke in strokes_after for item in stroke.support], key=lambda x: x[0], reverse=True)
+            pressure = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
+                               for stroke in strokes_after for item in stroke.pressure], key=lambda x: x[0])
 
-    print('support after')
-    for sup in support:
-        print('{:0.2f},\t{:0.4f},\t{}'.format(sup[0], sup[0] / raw[-1][1], sup[1]))
+            f.write('stock code: {}\n'.format(stock))
+            f.write('current price: {}, {}\n'.format(dates[-1], raw[-1]))
 
-    print('pressure')
-    for pre in pressure:
-        print('{:0.2f},\t{:0.4f},\t{}'.format(pre[0], pre[0] / raw[-1][1], pre[1]))
+            f.write('support before\n')
+            for sup in support_before:
+                f.write('{:0.2f},\t{:0.4f},\t{}\n'.format(sup[0], sup[0] / raw[-1][1], sup[1]))
+
+            f.write('support after\n')
+            for sup in support:
+                f.write('{:0.2f},\t{:0.4f},\t{}\n'.format(sup[0], sup[0] / raw[-1][1], sup[1]))
+
+            f.write('pressure\n')
+            for pre in pressure:
+                f.write('{:0.2f},\t{:0.4f},\t{}\n'.format(pre[0], pre[0] / raw[-1][1], pre[1]))
+
+            f.write('-------------\n\n')
+            f.flush()
+
