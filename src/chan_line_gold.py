@@ -20,7 +20,6 @@ def merge_ochl(ochl_list, times):
     merged = []
     merged_cnt = []
     merged_last_times = []
-    times = [x.strftime('%Y-%m-%d') for x in times.tolist()]
     merge_idx = 0
 
     for raw_idx, ochl in enumerate(ochl_list):
@@ -111,6 +110,9 @@ class Stroke(object):
                    (self.major_target, '2.0 of\t{{}} {} to\t{{}}'.format('up' if self.is_bull else 'down')),
                    (self.second_target, '2.618 of\t{{}} {} to\t{{}}'.format('up' if self.is_bull else 'down'))]
 
+        within = [w for w in within if w[0] > 1]
+        outside = [o for o in outside if o[0] > 1]
+
         self.support = within if self.is_bull else outside
         self.pressure = outside if self.is_bull else within
 
@@ -159,10 +161,17 @@ def find_strokes(points, merged_ochl_list):
 
         strokes = [s for s in strokes if s.valid]
 
-        if point[1]:
-            starts = [s.start_idx for s in strokes if s.is_bull == point[1] and s.high < merged_ochl_list[point[0]][2]]
-        else:
-            starts = [s.start_idx for s in strokes if s.is_bull == point[1] and s.low > merged_ochl_list[point[0]][3]]
+        early_strokes = [s for s in strokes if s.is_bull == point[1]]
+        longest = {}
+        for stroke in early_strokes:
+            if stroke.start_idx in longest:
+                longest[stroke.start_idx] = longest[stroke.start_idx] if ((merged_ochl_list[longest[stroke.start_idx]][2] > merged_ochl_list[stroke.end_idx][2] and point[1])
+                                                                          or (merged_ochl_list[longest[stroke.start_idx]][3] < merged_ochl_list[stroke.end_idx][3] and not point[1])) else stroke.end_idx
+            else:
+                longest[stroke.start_idx] = stroke.end_idx
+        starts = [start for start, end in longest.items()
+                  if (merged_ochl_list[end][2] < merged_ochl_list[point[0]][2] and point[1])
+                    or (merged_ochl_list[end][3] > merged_ochl_list[point[0]][3] and not point[1])]
 
         new_strokes = [Stroke(x, point[0], merged_ochl_list) for x in starts]
         new_strokes.append(Stroke(valid_points[idx - 1][0], point[0], merged_ochl_list))
@@ -176,38 +185,32 @@ def find_strokes(points, merged_ochl_list):
 
 if __name__ == '__main__':
     today = dt.datetime.today()
-    start_date = today - dt.timedelta(days=666)
+    start_date = today - dt.timedelta(days=365)
 
-    stocks = ['000528', '002049', '300529', '300607', '600518', '600588', '603877']
+    # stocks = ['000528', '002049', '300529', '300607', '600518', '600588', '603877']
+    stocks = ['300638']
 
     with open('../data/ps_analysis.txt', 'w') as f:
         for stock in stocks:
             can = qa.QA_fetch_stock_day_adv(stock, start=start_date.strftime('%Y-%m-%d'),
                                             end=today.strftime('%Y-%m-%d')).to_qfq()
             raw = can.data.loc[:, ['open', 'close', 'high', 'low']].values
-            dates = can.data.date
+            dates = [x.strftime('%Y-%m-%d') for x in can.data.reset_index().date.tolist()]
 
             merged, merged_dates, merged_cnt = merge_ochl(raw, dates)
             ends = find_endpoints(merged, merged_cnt)
 
-            strokes = find_strokes(ends, merged)
-            strokes_after = find_strokes(ends + [[len(merged) - 1, not ends[-1][1], True]], merged)
+            strokes = find_strokes(ends + [[len(merged) - 1, not ends[-1][1], True]], merged)
 
-            support_before = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
-                                     for stroke in strokes for item in stroke.support], key=lambda x: x[0], reverse=True)
             support = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
-                              for stroke in strokes_after for item in stroke.support], key=lambda x: x[0], reverse=True)
+                              for stroke in strokes for item in stroke.support if stroke.end_idx != len(merged) - 1], key=lambda x: x[0], reverse=True)
             pressure = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
-                               for stroke in strokes_after for item in stroke.pressure], key=lambda x: x[0])
+                               for stroke in strokes for item in stroke.pressure if stroke.end_idx != len(merged) - 1], key=lambda x: x[0])
 
             f.write('stock code: {}\n'.format(stock))
             f.write('current price: {}, {}\n'.format(dates[-1], raw[-1]))
 
-            f.write('support before\n')
-            for sup in support_before:
-                f.write('{:0.2f},\t{:0.4f},\t{}\n'.format(sup[0], sup[0] / raw[-1][1], sup[1]))
-
-            f.write('support after\n')
+            f.write('support\n')
             for sup in support:
                 f.write('{:0.2f},\t{:0.4f},\t{}\n'.format(sup[0], sup[0] / raw[-1][1], sup[1]))
 
