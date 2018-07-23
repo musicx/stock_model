@@ -185,10 +185,12 @@ def find_strokes(points, merged_ochl_list):
 
 if __name__ == '__main__':
     today = dt.datetime.today()
+    # today = dt.datetime(2018, 7, 6)
     start_date = today - dt.timedelta(days=365)
 
     # stocks = ['000528', '002049', '300529', '300607', '600518', '600588', '603877']
-    stocks = ['300638']
+    # stocks = ['300638', '600516']
+    stocks = ['002078']
 
     with open('../data/ps_analysis.txt', 'w') as f:
         for stock in stocks:
