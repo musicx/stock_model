@@ -83,6 +83,108 @@ def find_endpoints(merged_ochl_list, merged_count):
     return end
 
 
+def find_cycle(points, periods, keep_invalid=True, mean_allowance=0.1, stroke_allowance=0):
+    end_idx = dict([(p[0], (p[1], p[2])) for p in points if keep_invalid or p[2]])
+    cumu = 0
+    slices = []   # item is of (# or ticks, is Peak?)
+    for idx, cnt in enumerate(periods):
+        if idx in end_idx:
+            # print('last point to current point: {}'.format(cumu))
+            # print(('high' if end_idx[idx][0] else 'low') + ' ' + ('valid' if end_idx[idx][1] else 'unvalid') + ' period: ' + '{}'.format(cnt))
+            if cumu != 0:
+                slices.append((cumu, False))
+            slices.append((cnt, True))
+            cumu = 0
+        else:
+            cumu += cnt
+    if len(slices) < 3:
+        return []
+    ticks = []
+    for cnt, flag in slices:
+        ticks.extend([flag] * cnt)
+    start_point = slices[0][0] + slices[1][0]
+
+    cycles = []
+    for cycle in range(3, 120):
+        # print('cycle {}'.format(cycle))
+        short = int(np.floor(cycle * (1 - mean_allowance)))
+        long = int(np.ceil(cycle * (1 + mean_allowance)))
+        found = False
+        point = start_point
+        before = point
+        after = point + slices[2][0]
+        while not found:
+            if np.all(ticks[point:point+short]) and np.all(ticks[point:point+long]):
+                break
+                # always in peak phrase
+            try:
+                last_point = point
+                if np.any(ticks[point+short: point+long]):
+                    peaks = [short+i for i, p in enumerate(ticks[point+short: point+long]) if p]
+                    min_distance = np.min([np.abs(cycle - d) for d in peaks])
+                    point = point+cycle+min_distance if ticks[point+cycle+min_distance] else point+cycle-min_distance
+                    for p in range(point-1, last_point+short-1, -1):
+                        if ticks[p] and p > last_point:
+                            before = p     # earliest peak point in full range
+                    for p in range(point, last_point+long):
+                        if ticks[p] and p > last_point:
+                            after = p      # latest peak point in full range
+                elif np.any(ticks[before+short: point+short]):
+                    for p in range(last_point+short-1, before+short-1, -1):
+                        if ticks[p] and p > last_point:
+                            before = p
+                    for p in range(before+short, last_point+short):
+                        if ticks[p] and p > last_point:
+                            point = p
+                            after = p
+                elif np.any(ticks[point+long: after+long]):
+                    for p in range(after+long-1, last_point+long-1, -1):
+                        if ticks[p] and p > last_point:
+                            before = p
+                            point = p
+                    for p in range(last_point+long, after+long):
+                        if ticks[p] and p > last_point:
+                            after = p
+                elif point < len(ticks):
+                    break
+                    # cannot find peak in given range
+                if last_point == point:
+                    break
+                    # cannot move forward
+            except IndexError as e:
+                found = True
+        if found:
+            cycles.append(cycle)
+    return cycles
+
+
+def find_pair_cycle(cycles):
+    pcycles = []
+    passed = []
+    cycle_set = set(cycles)
+    for cycle in cycles:
+        if cycle in passed:
+            continue
+        cand = [cycle]
+        c = cycle
+        while True:
+            if c * 2 in cycle_set:
+                c = c * 2
+                cand.append(c)
+            elif c * 2 + 1 in cycle_set:
+                c = c * 2 + 1
+                cand.append(c)
+            elif c * 2 - 1 in cycle_set:
+                c = c * 2 - 1
+                cand.append(c)
+            else:
+                break
+        if len(cand) > 1:
+            pcycles.append(cand)
+            passed.extend(cand)
+    return pcycles
+
+
 class Stroke(object):
     def __init__(self, start_idx, end_idx, ochl):
         self.start_idx = start_idx
@@ -190,7 +292,7 @@ if __name__ == '__main__':
 
     # stocks = ['000528', '002049', '300529', '300607', '600518', '600588', '603877']
     # stocks = ['300638', '600516']
-    stocks = ['002078']
+    stocks = ['600518']
 
     with open('../data/ps_analysis.txt', 'w') as f:
         for stock in stocks:
@@ -201,6 +303,12 @@ if __name__ == '__main__':
 
             merged, merged_dates, merged_cnt = merge_ochl(raw, dates)
             ends = find_endpoints(merged, merged_cnt)
+
+            cycles = find_cycle(ends, merged_cnt)
+            print("found cycles: {}".format(','.join(map(str, cycles))))
+
+            pcycles = find_pair_cycle(cycles)
+            print("found paired cycles: {}".format(', '.join(map(str, pcycles))))
 
             strokes = find_strokes(ends + [[len(merged) - 1, not ends[-1][1], True]], merged)
 
