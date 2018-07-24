@@ -273,7 +273,7 @@ def find_strokes(points, merged_ochl_list):
                 longest[stroke.start_idx] = stroke.end_idx
         starts = [start for start, end in longest.items()
                   if (merged_ochl_list[end][2] < merged_ochl_list[point[0]][2] and point[1])
-                    or (merged_ochl_list[end][3] > merged_ochl_list[point[0]][3] and not point[1])]
+                  or (merged_ochl_list[end][3] > merged_ochl_list[point[0]][3] and not point[1])]
 
         new_strokes = [Stroke(x, point[0], merged_ochl_list) for x in starts]
         new_strokes.append(Stroke(valid_points[idx - 1][0], point[0], merged_ochl_list))
@@ -283,51 +283,3 @@ def find_strokes(points, merged_ochl_list):
                 strokes.append(stroke)
 
     return strokes
-
-
-if __name__ == '__main__':
-    today = dt.datetime.today()
-    # today = dt.datetime(2018, 7, 6)
-    start_date = today - dt.timedelta(days=999)
-
-    # stocks = ['000528', '002049', '300529', '300607', '600518', '600588', '603877']
-    # stocks = ['300638', '600516']
-    stocks = ['600518']
-
-    with open('../data/ps_analysis.txt', 'w') as f:
-        for stock in stocks:
-            can = qa.QA_fetch_stock_day_adv(stock, start=start_date.strftime('%Y-%m-%d'),
-                                            end=today.strftime('%Y-%m-%d')).to_qfq()
-            raw = can.data.loc[:, ['open', 'close', 'high', 'low']].values
-            dates = [x.strftime('%Y-%m-%d') for x in can.data.reset_index().date.tolist()]
-
-            merged, merged_dates, merged_cnt = merge_ochl(raw, dates)
-            ends = find_endpoints(merged, merged_cnt)
-
-            cycles = find_cycle(ends, merged_cnt)
-            print("found cycles: {}".format(','.join(map(str, cycles))))
-
-            pcycles = find_pair_cycle(cycles)
-            print("found paired cycles: {}".format(', '.join(map(str, pcycles))))
-
-            strokes = find_strokes(ends + [[len(merged) - 1, not ends[-1][1], True]], merged)
-
-            support = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
-                              for stroke in strokes for item in stroke.support if stroke.end_idx != len(merged) - 1], key=lambda x: x[0], reverse=True)
-            pressure = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
-                               for stroke in strokes for item in stroke.pressure if stroke.end_idx != len(merged) - 1], key=lambda x: x[0])
-
-            f.write('stock code: {}\n'.format(stock))
-            f.write('current price: {}, {}\n'.format(dates[-1], raw[-1]))
-
-            f.write('support\n')
-            for sup in support:
-                f.write('{:0.2f},\t{:0.4f},\t{}\n'.format(sup[0], sup[0] / raw[-1][1], sup[1]))
-
-            f.write('pressure\n')
-            for pre in pressure:
-                f.write('{:0.2f},\t{:0.4f},\t{}\n'.format(pre[0], pre[0] / raw[-1][1], pre[1]))
-
-            f.write('-------------\n\n')
-            f.flush()
-
