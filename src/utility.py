@@ -83,7 +83,7 @@ def find_endpoints(merged_ochl_list, merged_count):
     return end
 
 
-def find_cycle(points, periods, keep_invalid=True, mean_allowance=0.1, stroke_allowance=0):
+def find_cycle(points, periods, keep_invalid=True, mean_allowance=0.1, max_allowance=4):
     end_idx = dict([(p[0], (p[1], p[2])) for p in points if keep_invalid or p[2]])
     cumu = 0
     slices = []   # item is of (# or ticks, is Peak?)
@@ -102,13 +102,14 @@ def find_cycle(points, periods, keep_invalid=True, mean_allowance=0.1, stroke_al
     ticks = []
     for cnt, flag in slices:
         ticks.extend([flag] * cnt)
-    start_point = slices[0][0] + slices[1][0]
+    start_point = slices[0][0] + slices[1][0]    # TODO maybe a different start point would result in a different cycle
 
-    cycles = []
+    cycles = []   # modified items: length, avg, std
     for cycle in range(3, 120):
+        length = []
         # print('cycle {}'.format(cycle))
-        short = int(np.floor(cycle * (1 - mean_allowance)))
-        long = int(np.ceil(cycle * (1 + mean_allowance)))
+        short = int(max(np.floor(cycle * (1 - mean_allowance)), cycle - max_allowance))
+        long = int(min(np.ceil(cycle * (1 + mean_allowance)), cycle + max_allowance))
         found = False
         point = start_point
         before = point
@@ -129,7 +130,9 @@ def find_cycle(points, periods, keep_invalid=True, mean_allowance=0.1, stroke_al
                     for p in range(point, last_point+long):
                         if ticks[p] and p > last_point:
                             after = p      # latest peak point in full range
+                    length.append(point - last_point)
                 elif np.any(ticks[before+short: point+short]):
+                    delta = int((point - before) / 2.)
                     for p in range(last_point+short-1, before+short-1, -1):
                         if ticks[p] and p > last_point:
                             before = p
@@ -137,7 +140,11 @@ def find_cycle(points, periods, keep_invalid=True, mean_allowance=0.1, stroke_al
                         if ticks[p] and p > last_point:
                             point = p
                             after = p
+                    if len(length) > 1:
+                        length[-1] -= delta
+                    length.append(point - last_point + delta)
                 elif np.any(ticks[point+long: after+long]):
+                    delta = int((after - point) / 2.)
                     for p in range(after+long-1, last_point+long-1, -1):
                         if ticks[p] and p > last_point:
                             before = p
@@ -145,6 +152,9 @@ def find_cycle(points, periods, keep_invalid=True, mean_allowance=0.1, stroke_al
                     for p in range(last_point+long, after+long):
                         if ticks[p] and p > last_point:
                             after = p
+                    if len(length) > 1:
+                        length[-1] += delta
+                    length.append(point - last_point - delta)
                 elif point < len(ticks):
                     break
                     # cannot find peak in given range
@@ -154,15 +164,22 @@ def find_cycle(points, periods, keep_invalid=True, mean_allowance=0.1, stroke_al
             except IndexError as e:
                 found = True
         if found:
-            cycles.append(cycle)
-    return cycles
+            cycles.append((cycle, np.mean(length), np.std(length)))
+    mean = []
+    for cycle in cycles:
+        mc = int(round(cycle[1]))
+        if mc not in mean:
+            mean.append(mc)
+    return mean
 
 
 def find_pair_cycle(cycles):
+    # cycle_length = [x[0] for x in cycles]
+    cycle_length = cycles
     pcycles = []
     passed = []
-    cycle_set = set(cycles)
-    for cycle in cycles:
+    cycle_set = set(cycle_length)
+    for cycle in cycle_length:
         if cycle in passed:
             continue
         cand = [cycle]
@@ -176,6 +193,12 @@ def find_pair_cycle(cycles):
                 cand.append(c)
             elif c * 2 - 1 in cycle_set:
                 c = c * 2 - 1
+                cand.append(c)
+            elif c * 2 + 2 in cycle_set:
+                c = c * 2 + 2
+                cand.append(c)
+            elif c * 2 - 2 in cycle_set:
+                c = c * 2 - 2
                 cand.append(c)
             else:
                 break
