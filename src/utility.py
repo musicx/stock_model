@@ -163,7 +163,7 @@ def find_cycle(points, periods, keep_invalid=True, mean_allowance=0.1, max_allow
                     # cannot move forward
             except IndexError as e:
                 found = True
-        if found:
+        if found and len(length) > 0:
             cycles.append((cycle, np.mean(length), np.std(length)))
     mean = []
     for cycle in cycles:
@@ -306,3 +306,21 @@ def find_strokes(points, merged_ochl_list):
                 strokes.append(stroke)
 
     return strokes
+
+
+def find_center_endpoints(ochl_list, radius=3):
+    ends = []  # index, is top point, points contained in top (radius by default)
+    for idx, ochl in enumerate(ochl_list):
+        if (np.all([True] + [higher(ochl_list[idx+x], ochl_list[idx+x+1]) for x in range(radius) if idx+x+1 < len(ochl_list)]) and
+                np.all([True] + [higher(ochl_list[idx-x], ochl_list[idx-x-1]) for x in range(radius) if idx-x-1 >= 0])):
+            ends.append((idx, True, radius))
+        elif (np.all([True] + [lower(ochl_list[idx+x], ochl_list[idx+x+1]) for x in range(radius) if idx+x+1 < len(ochl_list)]) and
+                np.all([True] + [lower(ochl_list[idx-x], ochl_list[idx-x-1]) for x in range(radius) if idx-x-1 >= 0])):
+            ends.append((idx, False, radius))
+    return ends
+
+
+def find_center_counts(ochl_list, ends, radius=3):
+    end_idx = [x[0] for x in ends]
+    return None
+
