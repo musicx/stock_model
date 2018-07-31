@@ -37,7 +37,10 @@ if __name__ == '__main__':
 
     full = pd.concat([f for f in found if f is not None], axis=0)
 
-    fs = full.reset_index(drop=True)
+    if 'date' in full.columns:
+        fs = full.reset_index(drop=True)
+    else:
+        fs = full.reset_index()
     fs['hh'] = fs.high == fs.rh
     fs['hl'] = fs.low == fs.rl
     earlier = today - datetime.timedelta(days=5)

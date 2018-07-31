@@ -9,9 +9,10 @@ if __name__ ==  "__main__":
     today = dt.datetime.today()
     # today = dt.datetime(2018, 7, 6)
     start_date = today - dt.timedelta(days=730)
-    stocks = qa.QA_fetch_stock_list_adv().code.tolist()
+    # stocks = qa.QA_fetch_stock_list_adv().code.tolist()
+    stocks = ['000997', '300638', '600104', '603722', '603877']
 
-    for stock in stocks[:10]:
+    for stock in stocks:
         can = qa.QA_fetch_stock_day_adv(stock, start=start_date.strftime('%Y-%m-%d'),
                                         end=today.strftime('%Y-%m-%d')).to_qfq()
         raw = can.data.loc[:, ['open', 'close', 'high', 'low']].values
