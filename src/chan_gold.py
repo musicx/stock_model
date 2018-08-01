@@ -1,157 +1,63 @@
 import numpy as np
 import pandas as pd
 import QUANTAXIS as qa
+import datetime as dt
+from utility import *
 
 
-def higher(x, y):
-    return x[2] >= y[2] and x[3] >= y[3]
+if __name__ == '__main__':
+    # today = dt.datetime.today()
+    today = dt.datetime(2018, 7, 25)
+    start_date = today - dt.timedelta(days=365)
 
+    # stocks = ['000528', '002049', '300529', '300607', '600518', '600588', '603877']
+    # stocks = ['300638', '600516']
+    stocks = ['600997']
 
-def lower(x, y):
-    return x[2] <= y[2] and x[3] <= y[3]
+    with open('../data/chan_analysis.txt', 'w') as f:
+        for stock in stocks:
+            can = qa.QA_fetch_stock_day_adv(stock, start=start_date.strftime('%Y-%m-%d'),
+                                            end=today.strftime('%Y-%m-%d')).to_qfq()
+            raw = can.data.loc[:, ['open', 'close', 'high', 'low']]
+            try:
+                raw['dd'] = [x.strftime('%Y-%m-%d') for x in can.data.reset_index().date.tolist()]
+            except:
+                raw['dd'] = [x.strftime('%Y-%m-%d') for x in can.data.date.tolist()]
+            klines = [Kline(x[0], x[1], x[2], x[3], x[4]) for x in raw.values]
 
+            f.write('stock code: {}\n'.format(stock))
 
-class Line(object):
-    def __init__(self, start_idx, end_idx, ochl):
-        self.start_idx = start_idx
-        self.end_idx = end_idx
-        self.is_bull = ochl[start_idx][2] < ochl[end_idx][2] and ochl[start_idx][3] < ochl[end_idx][3]
-        self.start = ochl[start_idx][3] if self.is_bull else ochl[start_idx][2]
-        self.end = ochl[end_idx][2] if self.is_bull else ochl[end_idx][3]
-        self.high = self.end if self.is_bull else self.start
-        self.low = self.start if self.is_bull else self.end
-        span = self.high - self.low
-        self.low_energy = self.low + span * 0.382 if self.is_bull else self.high - span * 0.382
-        self.mid_energy = self.low + span * 0.5
-        self.high_energy = self.low + span * 0.382 if not self.is_bull else self.high - span * 0.382
-        self.first_target = self.high + span * 0.618 if self.is_bull else self.low - span * 0.618
-        self.second_target = self.high + span * 1.618 if self.is_bull else self.low - span * 1.618
+            merged = merge_klines(klines)
+            ends = find_endpoints(merged)
 
-    def tostring(self):
-        return '{} {} to {}'.format(self.start_idx, 'up' if self.is_bull else 'down', self.end_idx)
+            for point in ends:
+                f.write('{}: {} {} end\n'.format(merged[point[0]].date,
+                                                 'valid' if point[2] else 'invalid',
+                                                 'top' if point[1] else 'bottom'))
 
+            cycles = find_cycle(ends, merged)
+            print("found cycles: {}".format(','.join(map(str, cycles))))
 
-def find_lines(points, merged):
-    lines = [Line(points[0][0], points[1][0], merged)]
+            pcycles = find_pair_cycle(cycles)
+            print("found paired cycles: {}".format(', '.join(map(str, pcycles))))
 
-    for idx, point in enumerate(points):
-        if idx < 2:
-            continue
-        if point[1] == 0:
-            lines = [l for l in lines if (merged[point[0]][1] > l.low_energy and l.is_bull == True)
-                     or (merged[point[0]][3] > l.second_target and l.is_bull == False)]
-            starts = [l.start_idx for l in lines if l.is_bull == False and l.end > merged[point[0]][3]]
-            lines.extend([Line(x, point[0], merged) for x in starts] + [Line(points[idx - 1][0], point[0], merged)])
-        else:
-            lines = [l for l in lines if (merged[point[0]][1] < l.low_energy and l.is_bull == False)
-                     or (merged[point[0]][2] < l.second_target and l.is_bull == True)]
-            starts = [l.start_idx for l in lines if l.is_bull == True and l.end < merged[point[0]][2]]
-            lines.extend([Line(x, point[0], merged) for x in starts] + [Line(points[idx - 1][0], point[0], merged)])
+            strokes = find_strokes(ends + [[len(merged) - 1, not ends[-1][1], True]], merged)
 
-    return lines
+            support = sorted([(item[0], item[1].format(merged[stroke.start_idx].date, merged[stroke.end_idx].date))
+                              for stroke in strokes for item in stroke.support if stroke.end_idx != len(merged) - 1], key=lambda x: x[0], reverse=True)
+            pressure = sorted([(item[0], item[1].format(merged[stroke.start_idx].date, merged[stroke.end_idx].date))
+                               for stroke in strokes for item in stroke.pressure if stroke.end_idx != len(merged) - 1], key=lambda x: x[0])
 
+            f.write('current price: {}, {}\n'.format(klines[-1].date, klines[-1].close))
 
-def find_end_points(data, times):
-    mrg = []
-    mrg_cnt = []
-    mrg_date = []
-    raw = data
-    raw_date = times.tolist()
-    raw_idx = 0
-    mrg_idx = 0
+            f.write('support\n')
+            for sup in support:
+                f.write('{:0.2f},\t{:0.4f},\t{}\n'.format(sup[0], sup[0] / klines[-1].close, sup[1]))
 
-    while True:
-        if raw_idx >= len(raw):
-            break
-        if raw_idx == 0:
-            mrg.append(raw[raw_idx])
-            mrg_date.append(raw_date[raw_idx])
-            mrg_cnt.append(1)
-            raw_idx += 1
-            continue
-        if ((mrg[mrg_idx][2] >= raw[raw_idx][2] and mrg[mrg_idx][3] <= raw[raw_idx][3]) or
-                (mrg[mrg_idx][2] <= raw[raw_idx][2] and mrg[mrg_idx][3] >= raw[raw_idx][3])):
-            if mrg_idx == 0 or mrg[mrg_idx-1][2] <= mrg[mrg_idx][2]:
-                mrg[mrg_idx][0] = max(mrg[mrg_idx][0], raw[raw_idx][0])
-                mrg[mrg_idx][1] = max(mrg[mrg_idx][1], raw[raw_idx][1])
-                mrg[mrg_idx][2] = max(mrg[mrg_idx][2], raw[raw_idx][2])
-                mrg[mrg_idx][3] = max(mrg[mrg_idx][3], raw[raw_idx][3])
-            else:
-                mrg[mrg_idx][0] = min(mrg[mrg_idx][0], raw[raw_idx][0])
-                mrg[mrg_idx][1] = min(mrg[mrg_idx][1], raw[raw_idx][1])
-                mrg[mrg_idx][2] = min(mrg[mrg_idx][2], raw[raw_idx][2])
-                mrg[mrg_idx][3] = min(mrg[mrg_idx][3], raw[raw_idx][3])
-            mrg_date[mrg_idx] = raw_date[raw_idx]
-            mrg_cnt[mrg_idx] += 1
-            raw_idx += 1
-            continue
-        mrg.append(raw[raw_idx])
-        mrg_date.append(raw_date[raw_idx])
-        mrg_cnt.append(1)
-        raw_idx += 1
-        mrg_idx += 1
+            f.write('pressure\n')
+            for pre in pressure:
+                f.write('{:0.2f},\t{:0.4f},\t{}\n'.format(pre[0], pre[0] / klines[-1].close, pre[1]))
 
-    end = []
-    last = 0
-    for idx, cell in enumerate(mrg):
-        insert = False
-        if idx < 2:
-            continue
-        if higher(mrg[idx - 1], mrg[idx - 2]) and higher(mrg[idx - 1], cell):
-            end.append([idx - 1, 1, True])
-            insert = True
-        elif lower(mrg[idx - 1], mrg[idx - 2]) and lower(mrg[idx - 1], cell):
-            end.append([idx - 1, 0, True])
-            insert = True
-
-        if insert and len(end) > 1 and end[-1][1] == end[-2][1]:
-            if ((end[-1][1] == 1 and mrg[end[-1][0]][2] > mrg[end[-2][0]][2]) or
-                    (end[-1][1] == 0 and mrg[end[-1][0]][3] < mrg[end[-2][0]][3])):
-                if not (idx - 2 == last and mrg_cnt[last] + mrg_cnt[last + 1] > 2 or idx - 3 > last) and len(end) > 2:
-                    end.pop(-2)
-                else:
-                    end[-2][2] = False
-            else:
-                end.pop()
-                insert = False
-        elif insert and not (idx - 2 == last and mrg_cnt[last] + mrg_cnt[last + 1] > 2 or idx - 3 > last):
-            end.pop()
-            insert = False
-
-        if insert:
-            last = idx
-
-    valid = [x for x in end if x[2]]
-
-    lines = find_lines(valid, mrg)
-    support = set()
-    pressure = set()
-
-    for l in lines:
-        if l.is_bull:
-            support.add((l.low_energy, '0.382 of {} up to {}'.format(l.start_idx, l.end_idx)))
-            support.add((l.mid_energy, '0.5 of {} up to {}'.format(l.start_idx, l.end_idx)))
-            support.add((l.high_energy, '0.618 of {} up to {}'.format(l.start_idx, l.end_idx)))
-            pressure.add((l.high, 'high of {} up to {}'.format(l.start_idx, l.end_idx)))
-            pressure.add((l.first_target, '1.618 of {} up to {}'.format(l.start_idx, l.end_idx)))
-            pressure.add((l.second_target, '2.618 of {} up to {}'.format(l.start_idx, l.end_idx)))
-        else:
-            pressure.add((l.low_energy, '0.382 of {} down to {}'.format(l.start_idx, l.end_idx)))
-            pressure.add((l.mid_energy, '0.5 of {} down to {}'.format(l.start_idx, l.end_idx)))
-            pressure.add((l.high_energy, '0.618 of {} down to {}'.format(l.start_idx, l.end_idx)))
-            support.add((l.low, 'low of {} down to {}'.format(l.start_idx, l.end_idx)))
-            support.add((l.first_target, '1.618 of {} down to {}'.format(l.start_idx, l.end_idx)))
-            support.add((l.second_target, '2.618 of {} down to {}'.format(l.start_idx, l.end_idx)))
-
-    sup = sorted(list(support), key=lambda x: x[0], reverse=True)
-    pre = sorted(list(pressure), key=lambda x: x[0])
-
-    return sup, pre
-
-
-can = qa.QA_fetch_stock_day_adv('000002', start='2017-06-01', end='2018-05-29').to_qfq()
-raw = can.data.loc[:, ['open', 'close', 'high', 'low']].values
-dates = can.data.date
-
-
+            f.write('-------------\n\n')
+            f.flush()
 

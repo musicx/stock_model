@@ -67,14 +67,15 @@ def find_endpoints(merged_ochl_list, merged_count):
         if insert and len(end) > 1 and end[-1][1] == end[-2][1]:
             if ((end[-1][1] and merged_ochl_list[end[-1][0]][2] > merged_ochl_list[end[-2][0]][2]) or
                     (not end[-1][1] and merged_ochl_list[end[-1][0]][3] < merged_ochl_list[end[-2][0]][3])):
-                if not (idx - 2 == last and merged_count[last] + merged_count[last + 1] > 2 or idx - 3 > last):
-                    end.pop(-2)
-                else:
+                if idx - 2 == last and merged_count[last] + merged_count[last + 1] + merged_count[idx] > 3 or idx - 2 > last:
                     end[-2][2] = False
+                else:
+                    end.pop(-2)
             else:
                 end.pop()
                 insert = False
-        elif insert and idx > 1 and not (idx - 2 == last and merged_count[last] + merged_count[last + 1] > 2 or idx - 3 > last):
+        elif insert and idx > 1 and not (idx - 2 == last and merged_count[last] + merged_count[last + 1] + merged_count[idx] > 3
+                                         or idx - 2 > last):
             end.pop()
             insert = False
 
@@ -83,7 +84,7 @@ def find_endpoints(merged_ochl_list, merged_count):
     return end
 
 
-def find_cycle(points, periods, keep_invalid=True, mean_allowance=0.1, stroke_allowance=0):
+def find_cycle(points, periods, keep_invalid=False, mean_allowance=0.1, stroke_allowance=0):
     end_idx = dict([(p[0], (p[1], p[2])) for p in points if keep_invalid or p[2]])
     cumu = 0
     slices = []   # item is of (# or ticks, is Peak?)
@@ -292,7 +293,7 @@ if __name__ == '__main__':
 
     # stocks = ['000528', '002049', '300529', '300607', '600518', '600588', '603877']
     # stocks = ['300638', '600516']
-    stocks = ['600518']
+    stocks = ['603619']
 
     with open('../data/ps_analysis.txt', 'w') as f:
         for stock in stocks:
@@ -301,8 +302,15 @@ if __name__ == '__main__':
             raw = can.data.loc[:, ['open', 'close', 'high', 'low']].values
             dates = [x.strftime('%Y-%m-%d') for x in can.data.reset_index().date.tolist()]
 
+            f.write('stock code: {}\n'.format(stock))
+
             merged, merged_dates, merged_cnt = merge_ochl(raw, dates)
             ends = find_endpoints(merged, merged_cnt)
+
+            for point in ends:
+                f.write('{}: {} {} end\n'.format(merged_dates[point[0]],
+                                                 'valid' if point[2] else 'invalid',
+                                                 'top' if point[1] else 'bottom'))
 
             cycles = find_cycle(ends, merged_cnt)
             print("found cycles: {}".format(','.join(map(str, cycles))))
@@ -317,7 +325,6 @@ if __name__ == '__main__':
             pressure = sorted([(item[0], item[1].format(merged_dates[stroke.start_idx], merged_dates[stroke.end_idx]))
                                for stroke in strokes for item in stroke.pressure if stroke.end_idx != len(merged) - 1], key=lambda x: x[0])
 
-            f.write('stock code: {}\n'.format(stock))
             f.write('current price: {}, {}\n'.format(dates[-1], raw[-1]))
 
             f.write('support\n')

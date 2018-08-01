@@ -5,98 +5,88 @@ import datetime as dt
 
 
 def higher(x, y):
-    return x[2] >= y[2] and x[3] >= y[3]
+    return x.high >= y.high and x.low >= y.low
 
 
 def contain(x, y):
-    return x[2] >= y[2] and x[3] <= y[3]
+    return x.high >= y.high and x.low <= y.low
 
 
 def lower(x, y):
-    return x[2] <= y[2] and x[3] <= y[3]
+    return x.high <= y.high and x.low <= y.low
 
 
-def merge_ochl(ochl_list, times):
+def merge_klines(klines):
     merged = []
-    merged_cnt = []
-    merged_last_times = []
-    merge_idx = 0
 
-    for raw_idx, ochl in enumerate(ochl_list):
+    for raw_idx, kline in enumerate(klines):
         if raw_idx == 0:
-            merged.append(ochl_list[raw_idx])
-            merged_last_times.append(times[raw_idx])
-            merged_cnt.append(1)
+            merged.append(kline)
             continue
-        if contain(merged[merge_idx], ochl) or contain(ochl, merged[merge_idx]):
-            if merge_idx == 0 or merged[merge_idx-1][2] <= merged[merge_idx][2]:
-                merged[merge_idx][0] = max(merged[merge_idx][0], ochl[0])
-                merged[merge_idx][1] = max(merged[merge_idx][1], ochl[1])
-                merged[merge_idx][2] = max(merged[merge_idx][2], ochl[2])
-                merged[merge_idx][3] = max(merged[merge_idx][3], ochl[3])
-            else:
-                merged[merge_idx][0] = min(merged[merge_idx][0], ochl[0])
-                merged[merge_idx][1] = min(merged[merge_idx][1], ochl[1])
-                merged[merge_idx][2] = min(merged[merge_idx][2], ochl[2])
-                merged[merge_idx][3] = min(merged[merge_idx][3], ochl[3])
-            merged_last_times[merge_idx] = times[raw_idx]
-            merged_cnt[merge_idx] += 1
+        raising = len(merged) < 2 or (merged[-2].high + merged[-2].close * 2 + merged[-2].low) <= (merged[-1].high + merged[-1].close * 2 + merged[-1].low)
+        if contain(merged[-1], kline):
+            merged[-1] = merged[-1].merge(kline, raising, False)
+        elif contain(kline, merged[-1]):
+            merged[-1] = merged[-1].merge(kline, raising, True)
         else:
-            merged.append(ochl)
-            merged_last_times.append(times[raw_idx])
-            merged_cnt.append(1)
-            merge_idx += 1
+            merged.append(kline)
 
-    return merged, merged_last_times, merged_cnt
+    return merged
 
 
-def find_endpoints(merged_ochl_list, merged_count):
+def find_endpoints(klines):
     end = []  # item is (idx in merged list, is top end point, valid end point)
     last = 0
-    for idx, ochl in enumerate(merged_ochl_list):
-        if idx < 1:
-            continue
+    for idx, kline in enumerate(klines[:-1]):
         insert = False
-        if (idx == 1 or higher(merged_ochl_list[idx - 1], merged_ochl_list[idx - 2])) and higher(merged_ochl_list[idx - 1], ochl):
-            end.append([idx - 1, True, True])
+        if (idx == 0 or higher(kline, klines[idx - 1])) and higher(kline, klines[idx + 1]):
+            end.append([idx, True, True])
             insert = True
-        elif (idx == 1 or lower(merged_ochl_list[idx - 1], merged_ochl_list[idx - 2])) and lower(merged_ochl_list[idx - 1], ochl):
-            end.append([idx - 1, False, True])
+        elif (idx == 0 or lower(kline, klines[idx - 1])) and lower(kline, klines[idx + 1]):
+            end.append([idx, False, True])
             insert = True
 
-        if insert and len(end) > 1 and end[-1][1] == end[-2][1]:
-            if ((end[-1][1] and merged_ochl_list[end[-1][0]][2] > merged_ochl_list[end[-2][0]][2]) or
-                    (not end[-1][1] and merged_ochl_list[end[-1][0]][3] < merged_ochl_list[end[-2][0]][3])):
-                if not (idx - 2 == last and merged_count[last] + merged_count[last + 1] > 2 or idx - 3 > last):
-                    end.pop(-2)
+        if insert and len(end) > 1:
+            dist = ((idx - 1 == last and klines[last].right + kline.left > 2)
+                    or (idx - 2 == last and klines[last].right + klines[last + 1].period() + kline.left > 2)
+                    or (idx - 3 == last and klines[last].right + klines[last + 1].period() + klines[last+2].period() + kline.left > 2)
+                    or idx - 3 > last)
+            if end[-1][1] == end[-2][1]:
+                if ((end[-1][1] and klines[end[-1][0]].high > klines[end[-2][0]].high) or
+                        (not end[-1][1] and klines[end[-1][0]].low < klines[end[-2][0]].low)):
+                    if dist:
+                        end[-2][2] = False
+                    else:
+                        end.pop(-2)
                 else:
-                    end[-2][2] = False
-            else:
+                    end.pop()
+                    insert = False
+            elif not dist:
                 end.pop()
                 insert = False
-        elif insert and idx > 1 and not (idx - 2 == last and merged_count[last] + merged_count[last + 1] > 2 or idx - 3 > last):
-            end.pop()
-            insert = False
 
         if insert:
             last = idx
     return end
 
 
-def find_cycle(points, periods, keep_invalid=True, mean_allowance=0.1, max_allowance=4):
+def find_cycle(points, klines, mean_allowance=0.1, max_allowance=4, keep_invalid=False, use_merge=True):
     end_idx = dict([(p[0], (p[1], p[2])) for p in points if keep_invalid or p[2]])
     cumu = 0
     slices = []   # item is of (# or ticks, is Peak?)
-    for idx, cnt in enumerate(periods):
+    for idx, kline in enumerate(klines):
         if idx in end_idx:
-            # print('last point to current point: {}'.format(cumu))
-            # print(('high' if end_idx[idx][0] else 'low') + ' ' + ('valid' if end_idx[idx][1] else 'unvalid') + ' period: ' + '{}'.format(cnt))
             if cumu != 0:
                 slices.append((cumu, False))
-            slices.append((cnt, True))
+            if use_merge:
+                slices.append((kline.period(), True))
+            else:
+                slices.append((kline.left, False))
+                slices.append((1, True))
+                slices.append((kline.right, False))
             cumu = 0
         else:
-            cumu += cnt
+            cumu += kline.period()
     if len(slices) < 3:
         return []
     ticks = []
@@ -208,14 +198,45 @@ def find_pair_cycle(cycles):
     return pcycles
 
 
+class Kline(object):
+    def __init__(self, open, close, high, low, date):
+        self.open = open
+        self.close = close
+        self.high = high
+        self.low = low
+        self.date = date
+
+        self.left = 0
+        self.right = 0
+
+    def period(self):
+        return 1 + self.left + self.right
+
+    def merge(self, later, raising=True, keep_later=True):
+        new_date = later.date if keep_later else self.date
+        if raising:
+            line = Kline(max(self.open, later.open), max(self.close, later.close),
+                         max(self.high, later.high), max(self.low, later.low), new_date)
+        else:
+            line = Kline(min(self.open, later.open), min(self.close, later.close),
+                         min(self.high, later.high), min(self.low, later.low), new_date)
+        if keep_later:
+            line.left = self.period() + later.left
+            line.right = later.right
+        else:
+            line.left = self.left
+            line.right = self.right + later.period()
+        return line
+
+
 class Stroke(object):
-    def __init__(self, start_idx, end_idx, ochl):
+    def __init__(self, start_idx, end_idx, klines):
         self.start_idx = start_idx
         self.end_idx = end_idx
 
-        self.is_bull = ochl[start_idx][2] < ochl[end_idx][2] and ochl[start_idx][3] < ochl[end_idx][3]
-        self.high = max(ochl[start_idx][2], ochl[end_idx][2])
-        self.low = min(ochl[start_idx][3], ochl[end_idx][3])
+        self.is_bull = klines[start_idx].high < klines[end_idx].high and klines[start_idx].low < klines[end_idx].low
+        self.high = max(klines[start_idx].high, klines[end_idx].high)
+        self.low = min(klines[start_idx].low, klines[end_idx].low)
         span = self.high - self.low
         self.low_extreme = self.low + span * 0.238 if self.is_bull else self.high - span * 0.238
         self.low_energy = self.low + span * 0.382 if self.is_bull else self.high - span * 0.382
@@ -262,25 +283,25 @@ class Stroke(object):
         return '{} {} to {}'.format(self.start_idx, 'up' if self.is_bull else 'down', self.end_idx)
 
 
-def find_strokes(points, merged_ochl_list):
+def find_strokes(points, klines):
     valid_points = [x for x in points if x[2]]
-    strokes = [Stroke(valid_points[0][0], valid_points[1][0], merged_ochl_list)]
+    strokes = [Stroke(valid_points[0][0], valid_points[1][0], klines)]
 
     for idx, point in enumerate(valid_points):
         if idx < 2:
             continue
         for stroke in strokes:
-            if ((point[1] and ((merged_ochl_list[point[0]][1] > stroke.low_extreme and not stroke.is_bull) or
-                               (merged_ochl_list[point[0]][2] > stroke.second_target and stroke.is_bull))) or
-                    (not point[1] and ((merged_ochl_list[point[0]][1] < stroke.low_extreme and stroke.is_bull) or
-                                       (merged_ochl_list[point[0]][3] < stroke.second_target and not stroke.is_bull)))):
+            if ((point[1] and ((klines[point[0]].close > stroke.low_extreme and not stroke.is_bull) or
+                               (klines[point[0]].high > stroke.second_target and stroke.is_bull))) or
+                    (not point[1] and ((klines[point[0]].close < stroke.low_extreme and stroke.is_bull) or
+                                       (klines[point[0]].low < stroke.second_target and not stroke.is_bull)))):
                 stroke.valid = False
                 continue
-            stroke.support = [p for p in stroke.support if p[0] < merged_ochl_list[point[0]][3]]
-            stroke.pressure = [p for p in stroke.pressure if p[0] > merged_ochl_list[point[0]][2]]
+            stroke.support = [p for p in stroke.support if p[0] < klines[point[0]].low]
+            stroke.pressure = [p for p in stroke.pressure if p[0] > klines[point[0]].high]
             if (not stroke.end_change and
-                    ((stroke.is_bull and merged_ochl_list[point[0]][1] > stroke.high) or
-                     (not stroke.is_bull and merged_ochl_list[point[0]][1] < stroke.low))):
+                    ((stroke.is_bull and klines[point[0]].close > stroke.high) or
+                     (not stroke.is_bull and klines[point[0]].close < stroke.low))):
                 stroke.end_change = True
                 stroke.change_endpoint()
 
@@ -290,16 +311,16 @@ def find_strokes(points, merged_ochl_list):
         longest = {}
         for stroke in early_strokes:
             if stroke.start_idx in longest:
-                longest[stroke.start_idx] = longest[stroke.start_idx] if ((merged_ochl_list[longest[stroke.start_idx]][2] > merged_ochl_list[stroke.end_idx][2] and point[1])
-                                                                          or (merged_ochl_list[longest[stroke.start_idx]][3] < merged_ochl_list[stroke.end_idx][3] and not point[1])) else stroke.end_idx
+                longest[stroke.start_idx] = longest[stroke.start_idx] if ((klines[longest[stroke.start_idx]].high > klines[stroke.end_idx].high and point[1])
+                                                                          or (klines[longest[stroke.start_idx]].low < klines[stroke.end_idx].low and not point[1])) else stroke.end_idx
             else:
                 longest[stroke.start_idx] = stroke.end_idx
         starts = [start for start, end in longest.items()
-                  if (merged_ochl_list[end][2] < merged_ochl_list[point[0]][2] and point[1])
-                  or (merged_ochl_list[end][3] > merged_ochl_list[point[0]][3] and not point[1])]
+                  if (klines[end].high < klines[point[0]].high and point[1])
+                  or (klines[end].low > klines[point[0]].low and not point[1])]
 
-        new_strokes = [Stroke(x, point[0], merged_ochl_list) for x in starts]
-        new_strokes.append(Stroke(valid_points[idx - 1][0], point[0], merged_ochl_list))
+        new_strokes = [Stroke(x, point[0], klines) for x in starts]
+        new_strokes.append(Stroke(valid_points[idx - 1][0], point[0], klines))
 
         for stroke in new_strokes:
             if stroke.tostring() not in set([s.tostring() for s in strokes]):
@@ -308,14 +329,14 @@ def find_strokes(points, merged_ochl_list):
     return strokes
 
 
-def find_center_endpoints(ochl_list, radius=3):
+def find_center_endpoints(klines, radius=3):
     ends = []  # index, is top point, points contained in top (radius by default)
-    for idx, ochl in enumerate(ochl_list):
-        if (np.all([True] + [higher(ochl_list[idx+x], ochl_list[idx+x+1]) for x in range(radius) if idx+x+1 < len(ochl_list)]) and
-                np.all([True] + [higher(ochl_list[idx-x], ochl_list[idx-x-1]) for x in range(radius) if idx-x-1 >= 0])):
+    for idx, ochl in enumerate(klines):
+        if (np.all([True] + [higher(klines[idx + x], klines[idx + x + 1]) for x in range(radius) if idx + x + 1 < len(klines)]) and
+                np.all([True] + [higher(klines[idx - x], klines[idx - x - 1]) for x in range(radius) if idx - x - 1 >= 0])):
             ends.append((idx, True, radius))
-        elif (np.all([True] + [lower(ochl_list[idx+x], ochl_list[idx+x+1]) for x in range(radius) if idx+x+1 < len(ochl_list)]) and
-                np.all([True] + [lower(ochl_list[idx-x], ochl_list[idx-x-1]) for x in range(radius) if idx-x-1 >= 0])):
+        elif (np.all([True] + [lower(klines[idx + x], klines[idx + x + 1]) for x in range(radius) if idx + x + 1 < len(klines)]) and
+              np.all([True] + [lower(klines[idx - x], klines[idx - x - 1]) for x in range(radius) if idx - x - 1 >= 0])):
             ends.append((idx, False, radius))
     return ends
 
