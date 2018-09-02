@@ -6,13 +6,13 @@ from utility import *
 
 
 if __name__ == '__main__':
-    # today = dt.datetime.today()
-    today = dt.datetime(2018, 7, 25)
+    today = dt.datetime.today()
+    # today = dt.datetime(2018, 7, 24)
     start_date = today - dt.timedelta(days=365)
 
     # stocks = ['000528', '002049', '300529', '300607', '600518', '600588', '603877']
     # stocks = ['300638', '600516']
-    stocks = ['600997']
+    stocks = ['000717']
 
     with open('../data/chan_analysis.txt', 'w') as f:
         for stock in stocks:
@@ -31,15 +31,34 @@ if __name__ == '__main__':
             ends = find_endpoints(merged)
 
             for point in ends:
-                f.write('{}: {} {} end\n'.format(merged[point[0]].date,
-                                                 'valid' if point[2] else 'invalid',
-                                                 'top' if point[1] else 'bottom'))
+                f.write('{}: {} {} end @ {}\n'.format(merged[point[0]].date,
+                                                      'valid' if point[2] else 'invalid',
+                                                      'top' if point[1] else 'bottom',
+                                                      merged[point[0]].high if point[1] else merged[point[0]].low))
+            f.write('\n')
+
+            tops = [point[0] for point in ends if point[1] and point[2]]
+            highs = [merged[idx].high for idx in tops]
+            for idx, top in enumerate(tops):
+                same = []
+                for inner in tops[idx+1: idx+6]:
+                    if merged[inner].high / merged[top].high > 1.06:
+                        same.clear()
+                        break
+                    if abs(merged[inner].high / merged[top].high - 1) < 0.03:
+                        same.append(inner)
+                if len(same) > 0:
+                    print('base: {} @ {}, found: {}'.format(merged[top].date, merged[top].high,
+                                                            [(merged[x].date, merged[x].high) for x in same]))
+
+
 
             cycles = find_cycle(ends, merged)
-            print("found cycles: {}".format(','.join(map(str, cycles))))
+            f.write("found cycles: {}\n".format(','.join(map(str, cycles))))
 
             pcycles = find_pair_cycle(cycles)
-            print("found paired cycles: {}".format(', '.join(map(str, pcycles))))
+            f.write("found paired cycles: {}\n".format(', '.join(map(str, pcycles))))
+            f.write('\n')
 
             strokes = find_strokes(ends + [[len(merged) - 1, not ends[-1][1], True]], merged)
 
@@ -53,6 +72,7 @@ if __name__ == '__main__':
             f.write('support\n')
             for sup in support:
                 f.write('{:0.2f},\t{:0.4f},\t{}\n'.format(sup[0], sup[0] / klines[-1].close, sup[1]))
+            f.write('\n')
 
             f.write('pressure\n')
             for pre in pressure:
