@@ -8,9 +8,9 @@ from utility import *
 if __name__ ==  "__main__":
     today = dt.datetime.today()
     # today = dt.datetime(2018, 7, 6)
-    start_date = today - dt.timedelta(days=365)
-    # stocks = qa.QA_fetch_stock_list_adv().code.tolist()
-    stocks = ['300673']
+    start_date = today - dt.timedelta(days=730)
+##    stocks = qa.QA_fetch_stock_list_adv().code.tolist()
+    stocks = ['000717']
 
     for stock in stocks:
         can = qa.QA_fetch_stock_day_adv(stock, start=start_date.strftime('%Y-%m-%d'),

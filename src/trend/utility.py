@@ -18,18 +18,23 @@ def lower(x, y):
 
 def merge_klines(klines):
     merged = []
-
-    for raw_idx, kline in enumerate(klines):
-        if raw_idx == 0:
-            merged.append(kline)
+    raw_idx = 0
+    while raw_idx < len(klines):
+        if len(merged) < 2:
+            merged.append(klines[raw_idx])
+            raw_idx += 1
             continue
-        raising = len(merged) < 2 or (merged[-2].high + merged[-2].close * 2 + merged[-2].low) <= (merged[-1].high + merged[-1].close * 2 + merged[-1].low)
-        if contain(merged[-1], kline):
+        raising = ((len(merged) < 3 and merged[-1].close > merged[-1].open) or
+                   (len(merged) > 2 and (merged[-3].high + merged[-3].close * 2 + merged[-3].low) <= (merged[-2].high + merged[-2].close * 2 + merged[-2].low)))
+        if not(contain(merged[-2], merged[-1]) or contain(merged[-1], merged[-2])):
+            merged.append(klines[raw_idx])
+            raw_idx += 1
+        if contain(merged[-2], merged[-1]):
+            kline = merged.pop()
             merged[-1] = merged[-1].merge(kline, raising, False)
-        elif contain(kline, merged[-1]):
+        elif contain(merged[-1], merged[-2]):
+            kline = merged.pop()
             merged[-1] = merged[-1].merge(kline, raising, True)
-        else:
-            merged.append(kline)
 
     return merged
 

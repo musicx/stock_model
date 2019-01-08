@@ -3,6 +3,7 @@ import pandas as pd
 import QUANTAXIS as qa
 import datetime as dt
 from functools import reduce
+from index import *
 
 
 def ma_lines(data, col, N):
@@ -113,9 +114,10 @@ if __name__ == '__main__':
     # divide_date = today - dt.timedelta(days=60)
     # divide_str = divide_date.strftime('%Y-%m-%d')
 
-    stocks = qa.QA_fetch_stock_list_adv()
-    stock_list = stocks.code.tolist()
-    for stock in stock_list[:3]:
+    # stocks = qa.QA_fetch_stock_list_adv()
+    # stock_list = stocks.code.tolist()
+    stock_list = ZZ800.split('\n')
+    for stock in stock_list:
         print('%s: handling %s' % (dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), stock))
         try:
             candles = qa.QA_fetch_stock_day_adv(stock, start='2013-01-01', end=today_str).to_qfq()
