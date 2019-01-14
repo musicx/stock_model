@@ -4,12 +4,13 @@ import QUANTAXIS as qa
 import datetime as dt
 from functools import reduce
 from index import *
+from random import shuffle
 
 
 def ma_lines(data, col, N):
     ma = qa.MA(data[col], N) / data[col]
     ema = qa.EMA(data[col], N) / data[col]
-    sma = qa.SMA(data[col], N, 2) / data[col]
+    sma = qa.SMA(data[col], N) / data[col]
     ub = (ma + 2 * qa.STD(data[col], N)) / data[col]
     lb = qa.MAX((ma - 2 * qa.STD(data[col], N)), data['zero']) / data[col]
     return pd.DataFrame({'MA': ma, 'EMA': ema, 'SMA': sma, 'UB': ub, 'LB': lb})
@@ -117,10 +118,11 @@ if __name__ == '__main__':
     # stocks = qa.QA_fetch_stock_list_adv()
     # stock_list = stocks.code.tolist()
     stock_list = ZZ800.split('\n')
-    for stock in stock_list:
+    shuffle(stock_list)
+    for stock in stock_list[:10]:
         print('%s: handling %s' % (dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), stock))
         try:
-            candles = qa.QA_fetch_stock_day_adv(stock, start='2013-01-01', end=today_str).to_qfq()
+            candles = qa.QA_fetch_stock_day_adv(stock, start='2016-01-01', end=today_str).to_qfq()
             if candles.data.shape[0] <= 150:
                 continue
         except:
@@ -311,10 +313,18 @@ if __name__ == '__main__':
                  candles.add_func(ma_lines, col='cho', N=120).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_120_cho', 'EMA': 'ema_120_cho', 'SMA': 'sma_120_cho', 'UB': 'boll_ub_120_cho', 'LB': 'boll_lb_120_cho'}),
                  candles.add_func(ma_lines, col='cho', N=144).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_144_cho', 'EMA': 'ema_144_cho', 'SMA': 'sma_144_cho', 'UB': 'boll_ub_144_cho', 'LB': 'boll_lb_144_cho'})]
 
-        full = pd.concat(ma + ma1 + ma2 + ma3 + vma + macho + mtm + cci + macd + kdj + skdj + dmi + adtm + vols + pr + asi + [label], axis=1)
+        line = pd.concat(ma + ma1 + ma2 + ma3 + vma + macho + mtm + cci + macd + kdj + skdj + dmi + adtm + vols + pr + asi, axis=1)
+        delta = line / (line.shift(1).fillna(0.0) + 0.0000001)
+        sec_deriv = delta / (delta.shift(1).fillna(0.0) + 0.0000001)
+
+        delta.columns = ['{}_delta'.format(x) for x in line.columns]
+        sec_deriv.columns = ['{}_sec'.format(x) for x in line.columns]
+
+        full = pd.concat([line, delta, sec_deriv, label], axis=1)
+
         # full = pd.concat([full, full.shift(1).rename(columns=dict([(x, "{}_ld".format(x)) for x in full.columns])), label], axis=1)
         full = full.iloc[150:-10, :].reset_index()
         print("data size: {}".format(full.shape))
 
-        full.loc[full.date < '2018-03-01', :].to_hdf('../data/inds/{}.hdf'.format(stock), key='train')
-        full.loc[full.date >= '2018-03-01', :].to_hdf('../data/inds/{}.hdf'.format(stock), key='test')
+        full.loc[full.date < '2018-11-01', :].to_hdf('../data/inds/{}.hdf'.format(stock), key='train')
+        full.loc[full.date >= '2018-11-01', :].to_hdf('../data/inds/{}.hdf'.format(stock), key='test')

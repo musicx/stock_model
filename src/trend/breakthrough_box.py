@@ -14,7 +14,7 @@ if __name__ == '__main__':
     stocks = qa.QA_fetch_stock_list_adv()
     stock_list = stocks.code.tolist()
 
-    with open('../data/break_through_box.txt', 'w') as f:
+    with open('../../data/break_through_box.txt', 'w') as f:
         for stock in stock_list:
             try:
                 can = qa.QA_fetch_stock_day_adv(stock, start=start_date.strftime('%Y-%m-%d'),
