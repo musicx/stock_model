@@ -38,18 +38,18 @@ if __name__ == '__main__':
     candles = qa.QA_fetch_stock_day_adv(stock_list, start=divide_str, end=today_str).to_qfq()
     stage = candles.add_func(up_stage, 'close').reset_index()
     block_stage = pd.merge(names, stage, on='code')
-    hotness = block_stage.groupby(['date', 'blockname'])['hot'].sum()
+    hotness = block_stage.groupby(['date', 'blockname'])['hot'].sum().reset_index()
 
     hotness['rank'] = hotness.groupby('date')['hot'].rank(ascending=False, method='first')
-    hotness['block_hot'] = hotness.apply(lambda x: '{}: {}'.format(x['blockname'], x['hotness']), axis=1)
+    hotness['block_hot'] = hotness.apply(lambda x: '{}: {}'.format(x['blockname'], x['hot']), axis=1)
     hot_pivot = hotness.loc[hotness['rank'] <= 20, :].pivot(index='date', columns='rank', values='block_hot')
     print(hot_pivot)
     hot_pivot.to_csv('../data/block_hotness.csv')
 
     stock_block = pd.merge(hotness.loc[hotness['rank'] <= 20, :], names, on='blockname')
-    top_stock = stock_block.groupby(['date', 'code'])['hotness'].count().reset_index().sort_values(['date', 'hotness'], ascending=[False,False])
+    top_stock = stock_block.groupby(['date', 'code'])['hot'].count().reset_index().sort_values(['date', 'hot'], ascending=[False,False])
     print(top_stock.iloc[:30, :])
-    top_stock.to_csv('../data/stock_hot_block.csv')
+    top_stock.loc[top_stock['hot'] > 2, :].to_csv('../data/stock_hot_block.csv', index=False)
 
 
 
