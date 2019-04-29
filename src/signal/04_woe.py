@@ -29,8 +29,10 @@ print(splitter.precheck_data(train_data))
 
 splitter.fit(train_data)
 splitter.apply(test_data)
+splitter.save_summary('../data/inds/split_summary.txt')
+
 mrgr = BinMerger(min_drop=0, min_merge=0, min_merge_bad=0,
-                 min_iv=0, max_miss=0.999999,
+                 min_iv=0.001, max_miss=0.999999,
                  check_monotonicity=False, z_scale=False, num_jobs=2)
 mrgr.fit(splitter.data_summary)
 

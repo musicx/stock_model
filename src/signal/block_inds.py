@@ -12,11 +12,11 @@ def up_stage(data, col):
 
 
 if __name__ == '__main__':
-    today = dt.datetime.today()
+    today = dt.datetime.today() - dt.timedelta(days=1)
     # today = dt.datetime(2018, 7, 6)
     today_str = today.strftime('%Y-%m-%d')
 
-    divide_date = today - dt.timedelta(days=14)
+    divide_date = today - dt.timedelta(days=15)
     divide_str = divide_date.strftime('%Y-%m-%d')
 
     stocks = qa.QA_fetch_stock_list_adv()

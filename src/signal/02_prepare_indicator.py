@@ -94,6 +94,18 @@ def adtm_ind(data, N=23, M=8):
     return pd.DataFrame(DICT)
 
 
+def srsi_ind(data, N=7):
+    VA = data.apply(lambda x: (x.close - x.open) / (x.high - x.low) if x.high != x.low else 0.0, axis=1)
+    SRSI = qa.MA(VA, N)
+    return pd.DataFrame({'SRSI': SRSI})
+
+
+def stt_ind(data, N=21, M=42):
+    STT = qa.EMA(qa.LINEARREG_SLOPE(data.close, N) * N + data.close, M)
+    EMA2 = qa.EMA((data.close * 2 + data.high + data.low) / 4, 2)
+    return pd.DataFrame({'STT': STT / EMA2})
+
+
 def go_up(data, N=5, P=3, M=0.1):
     ind = (data.close > data.close.shift(1)) * 1
     checked = check(ind, -N)
@@ -119,7 +131,7 @@ if __name__ == '__main__':
     # stock_list = stocks.code.tolist()
     stock_list = ZZ800.split('\n')
     shuffle(stock_list)
-    for stock in stock_list[:10]:
+    for stock in stock_list[:40]:
         print('%s: handling %s' % (dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), stock))
         try:
             candles = qa.QA_fetch_stock_day_adv(stock, start='2016-01-01', end=today_str).to_qfq()
@@ -141,179 +153,185 @@ if __name__ == '__main__':
 
         # quantiles
         pr = [candles.add_func(pr_ind, N=x).loc[:, ['AR', 'BR', 'CR']].rename(columns={'AR': 'ar_{}'.format(x), 'BR': 'br_{}'.format(x), 'CR': 'cr_{}'.format(x)})
-              for x in range(3, 61, 3)]
+              for x in range(5, 61, 5)]
 
         asi = [candles.add_func(asi_ind, M1=x, M2=y).loc[:, ['ASI', 'ASIT']].rename(columns={'ASI': 'asi_{}_{}'.format(x, y), 'ASIT': 'asit_{}_{}'.format(x, y)})
-               for x in range(6, 31, 3) for y in range(3, 31, 3)]
+               for x in range(5, 31, 5) for y in range(3, 15, 3)]
 
-        cci = [candles.add_func(qa.QA_indicator_CCI, N=x).loc[:, 'CCI'].rename(columns={'CCI': 'cci_{}'.format(x)})
-               for x in range(6, 101, 2)]
+        cci = [candles.add_func(qa.QA_indicator_CCI, N=x).loc[:, ['CCI']].rename(columns={'CCI': 'cci_{}'.format(x)})
+               for x in range(5, 101, 5)]
 
         macd = [candles.add_func(qa.QA_indicator_MACD, short=x, long=y, mid=z).loc[:, ['DIF', 'DEA', 'MACD']].rename(columns={'DIF': 'dif_{}_{}_{}'.format(x, y, z),
                                                                                                                               'DEA': 'dea_{}_{}_{}'.format(x, y, z),
                                                                                                                               'MACD': 'macd_{}_{}_{}'.format(x, y, z)})
-                for x in range(3, 31, 3) for y in range(4, 61, 2) for z in range(3, 31, 3) if x != y]
+                for x in range(3, 16, 4) for y in range(10, 41, 5) for z in range(5, 31, 5) if x != y]
 
         kdj = [candles.add_func(qa.QA_indicator_KDJ, N=x, M1=y, M2=z).loc[:, ['KDJ_K', 'KDJ_D', 'KDJ_J']].rename(columns={'KDJ_K': 'kdj_k_{}_{}_{}'.format(x, y, z),
                                                                                                                           'KDJ_D': 'kdj_d_{}_{}_{}'.format(x, y, z),
                                                                                                                           'KDJ_J': 'kdj_j_{}_{}_{}'.format(x, y, z)})
-               for x in range(3, 31, 3) for y in range(2, 21, 2) for z in range(2, 21, 2)]
+               for x in range(5, 31, 5) for y in range(5, 21, 5) for z in range(5, 21, 5)]
 
         skdj = [candles.add_func(qa.QA_indicator_SKDJ, N=x, M=y).loc[:, ['RSV', 'SKDJ_K', 'SKDJ_D']].rename(columns={'RSV': 'skdj_v_{}_{}'.format(x, y), 'SKDJ_D': 'skdj_d_{}_{}'.format(x, y), 'SKDJ_K': 'skdj_k_{}_{}'.format(x, y)})
-                for x in range(5, 101, 5) for y in range(2, 31, 2)]
+                for x in range(5, 101, 5) for y in range(5, 31, 5)]
 
         dmi = [candles.add_func(dmi_ind, M1=x, M2=y).loc[:, ['DI1', 'DI2', 'ADX', 'ADXR']].rename(columns={'DI1': 'dmi_dip_{}_{}'.format(x, y), 'DI2': 'dmi_dim_{}_{}'.format(x, y), 'ADX': 'dmi_adx_{}_{}'.format(x, y), 'ADXR': 'dmi_adxr_{}_{}'.format(x, y)})
-               for x in range(6, 31, 3) for y in range(2, 10)]
+               for x in range(5, 31, 5) for y in range(2, 10, 2)]
 
         adtm = [candles.add_func(adtm_ind, N=x, M=y).loc[:, ['ADTM', 'MAADTM']].rename(columns={'ADTM': 'adtm_{}_{}'.format(x, y), 'MAADTM': 'adtm_ma_{}_{}'.format(x, y)})
-                for x in range(3, 31, 3) for y in range(2, 51, 2)]
+                for x in range(5, 31, 5) for y in range(5, 51, 5)]
 
         vols = [candles.add_func(vol_ind, N=x).loc[:, ['VR', 'VRSI', 'OBV']].rename(columns={'VR': 'vr_{}'.format(x), 'VRSI': 'vrsi_{}'.format(x), 'OBV': 'obv_{}'.format(x)})
-                for x in range(3, 101, 3)]
+                for x in range(5, 101, 5)]
 
         # price lines, will be close / line
         mtm = [candles.add_func(mtm_ind, col='close', N=x, M=y).loc[:, ['MTM', 'MTMMA']].rename(columns={'MTM': 'mtm_{}_{}'.format(x, y), 'MTMMA': 'mtmma_{}_{}'.format(x, y)})
-               for x in range(3, 31, 3) for y in range(2, 21, 2)]
+               for x in range(5, 31, 5) for y in range(3, 21, 3)]
 
-        ma = [candles.add_func(ma_lines, col='close', N=3).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_3', 'EMA': 'ema_3', 'SMA': 'sma_3', 'UB': 'boll_ub_3', 'LB': 'boll_lb_3'}),
+        srsi = [candles.add_func(srsi_ind, N=x).loc[:, ['SRSI']].rename(columns={'SRSI': 'srsi_{}'.format(x)})
+                for x in range(3, 20, 4)]
+
+        stt = [candles.add_func(stt_ind, N=x, M=2*x).loc[:, ['STT']].rename(columns={'STT': 'stt_{}'.format(x)})
+               for x in range(10, 50, 5)]
+
+        ma = [#candles.add_func(ma_lines, col='close', N=3).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_3', 'EMA': 'ema_3', 'SMA': 'sma_3', 'UB': 'boll_ub_3', 'LB': 'boll_lb_3'}),
               candles.add_func(ma_lines, col='close', N=5).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_5', 'EMA': 'ema_5', 'SMA': 'sma_5', 'UB': 'boll_ub_5', 'LB': 'boll_lb_5'}),
-              candles.add_func(ma_lines, col='close', N=8).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_8', 'EMA': 'ema_8', 'SMA': 'sma_8', 'UB': 'boll_ub_8', 'LB': 'boll_lb_8'}),
+              #candles.add_func(ma_lines, col='close', N=8).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_8', 'EMA': 'ema_8', 'SMA': 'sma_8', 'UB': 'boll_ub_8', 'LB': 'boll_lb_8'}),
               candles.add_func(ma_lines, col='close', N=10).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_10', 'EMA': 'ema_10', 'SMA': 'sma_10', 'UB': 'boll_ub_10', 'LB': 'boll_lb_10'}),
               candles.add_func(ma_lines, col='close', N=13).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_13', 'EMA': 'ema_13', 'SMA': 'sma_13', 'UB': 'boll_ub_13', 'LB': 'boll_lb_13'}),
-              candles.add_func(ma_lines, col='close', N=15).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_15', 'EMA': 'ema_15', 'SMA': 'sma_15', 'UB': 'boll_ub_15', 'LB': 'boll_lb_15'}),
-              candles.add_func(ma_lines, col='close', N=18).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_18', 'EMA': 'ema_18', 'SMA': 'sma_18', 'UB': 'boll_ub_18', 'LB': 'boll_lb_18'}),
+              #candles.add_func(ma_lines, col='close', N=15).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_15', 'EMA': 'ema_15', 'SMA': 'sma_15', 'UB': 'boll_ub_15', 'LB': 'boll_lb_15'}),
+              #candles.add_func(ma_lines, col='close', N=18).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_18', 'EMA': 'ema_18', 'SMA': 'sma_18', 'UB': 'boll_ub_18', 'LB': 'boll_lb_18'}),
               candles.add_func(ma_lines, col='close', N=20).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_20', 'EMA': 'ema_20', 'SMA': 'sma_20', 'UB': 'boll_ub_20', 'LB': 'boll_lb_20'}),
-              candles.add_func(ma_lines, col='close', N=21).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_21', 'EMA': 'ema_21', 'SMA': 'sma_21', 'UB': 'boll_ub_21', 'LB': 'boll_lb_21'}),
-              candles.add_func(ma_lines, col='close', N=26).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_26', 'EMA': 'ema_26', 'SMA': 'sma_26', 'UB': 'boll_ub_26', 'LB': 'boll_lb_26'}),
+              #candles.add_func(ma_lines, col='close', N=21).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_21', 'EMA': 'ema_21', 'SMA': 'sma_21', 'UB': 'boll_ub_21', 'LB': 'boll_lb_21'}),
+              #candles.add_func(ma_lines, col='close', N=26).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_26', 'EMA': 'ema_26', 'SMA': 'sma_26', 'UB': 'boll_ub_26', 'LB': 'boll_lb_26'}),
               candles.add_func(ma_lines, col='close', N=30).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_30', 'EMA': 'ema_30', 'SMA': 'sma_30', 'UB': 'boll_ub_30', 'LB': 'boll_lb_30'}),
-              candles.add_func(ma_lines, col='close', N=34).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_34', 'EMA': 'ema_34', 'SMA': 'sma_34', 'UB': 'boll_ub_34', 'LB': 'boll_lb_34'}),
-              candles.add_func(ma_lines, col='close', N=40).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_40', 'EMA': 'ema_40', 'SMA': 'sma_40', 'UB': 'boll_ub_40', 'LB': 'boll_lb_40'}),
+              #candles.add_func(ma_lines, col='close', N=34).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_34', 'EMA': 'ema_34', 'SMA': 'sma_34', 'UB': 'boll_ub_34', 'LB': 'boll_lb_34'}),
+              #candles.add_func(ma_lines, col='close', N=40).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_40', 'EMA': 'ema_40', 'SMA': 'sma_40', 'UB': 'boll_ub_40', 'LB': 'boll_lb_40'}),
               candles.add_func(ma_lines, col='close', N=44).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_44', 'EMA': 'ema_44', 'SMA': 'sma_44', 'UB': 'boll_ub_44', 'LB': 'boll_lb_44'}),
-              candles.add_func(ma_lines, col='close', N=50).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_50', 'EMA': 'ema_50', 'SMA': 'sma_50', 'UB': 'boll_ub_50', 'LB': 'boll_lb_50'}),
+              #candles.add_func(ma_lines, col='close', N=50).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_50', 'EMA': 'ema_50', 'SMA': 'sma_50', 'UB': 'boll_ub_50', 'LB': 'boll_lb_50'}),
               candles.add_func(ma_lines, col='close', N=55).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_55', 'EMA': 'ema_55', 'SMA': 'sma_55', 'UB': 'boll_ub_55', 'LB': 'boll_lb_55'}),
               candles.add_func(ma_lines, col='close', N=60).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_60', 'EMA': 'ema_60', 'SMA': 'sma_60', 'UB': 'boll_ub_60', 'LB': 'boll_lb_60'}),
-              candles.add_func(ma_lines, col='close', N=66).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_66', 'EMA': 'ema_66', 'SMA': 'sma_66', 'UB': 'boll_ub_66', 'LB': 'boll_lb_66'}),
+              #candles.add_func(ma_lines, col='close', N=66).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_66', 'EMA': 'ema_66', 'SMA': 'sma_66', 'UB': 'boll_ub_66', 'LB': 'boll_lb_66'}),
               candles.add_func(ma_lines, col='close', N=89).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_89', 'EMA': 'ema_89', 'SMA': 'sma_89', 'UB': 'boll_ub_89', 'LB': 'boll_lb_89'}),
-              candles.add_func(ma_lines, col='close', N=99).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_99', 'EMA': 'ema_99', 'SMA': 'sma_99', 'UB': 'boll_ub_99', 'LB': 'boll_lb_99'}),
+              #candles.add_func(ma_lines, col='close', N=99).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_99', 'EMA': 'ema_99', 'SMA': 'sma_99', 'UB': 'boll_ub_99', 'LB': 'boll_lb_99'}),
               candles.add_func(ma_lines, col='close', N=120).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_120', 'EMA': 'ema_120', 'SMA': 'sma_120', 'UB': 'boll_ub_120', 'LB': 'boll_lb_120'}),
               candles.add_func(ma_lines, col='close', N=144).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_144', 'EMA': 'ema_144', 'SMA': 'sma_144', 'UB': 'boll_ub_144', 'LB': 'boll_lb_144'})]
 
-        vma = [candles.add_func(ma_lines, col='volume', N=3).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_3v', 'EMA': 'ema_3v', 'SMA': 'sma_3v', 'UB': 'boll_ub_3v', 'LB': 'boll_lb_3v'}),
+        vma = [#candles.add_func(ma_lines, col='volume', N=3).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_3v', 'EMA': 'ema_3v', 'SMA': 'sma_3v', 'UB': 'boll_ub_3v', 'LB': 'boll_lb_3v'}),
                candles.add_func(ma_lines, col='volume', N=5).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_5v', 'EMA': 'ema_5v', 'SMA': 'sma_5v', 'UB': 'boll_ub_5v', 'LB': 'boll_lb_5v'}),
-               candles.add_func(ma_lines, col='volume', N=8).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_8v', 'EMA': 'ema_8v', 'SMA': 'sma_8v', 'UB': 'boll_ub_8v', 'LB': 'boll_lb_8v'}),
+               #candles.add_func(ma_lines, col='volume', N=8).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_8v', 'EMA': 'ema_8v', 'SMA': 'sma_8v', 'UB': 'boll_ub_8v', 'LB': 'boll_lb_8v'}),
                candles.add_func(ma_lines, col='volume', N=10).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_10v', 'EMA': 'ema_10v', 'SMA': 'sma_10v', 'UB': 'boll_ub_10v', 'LB': 'boll_lb_10v'}),
                candles.add_func(ma_lines, col='volume', N=13).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_13v', 'EMA': 'ema_13v', 'SMA': 'sma_13v', 'UB': 'boll_ub_13v', 'LB': 'boll_lb_13v'}),
-               candles.add_func(ma_lines, col='volume', N=15).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_15v', 'EMA': 'ema_15v', 'SMA': 'sma_15v', 'UB': 'boll_ub_15v', 'LB': 'boll_lb_15v'}),
-               candles.add_func(ma_lines, col='volume', N=18).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_18v', 'EMA': 'ema_18v', 'SMA': 'sma_18v', 'UB': 'boll_ub_18v', 'LB': 'boll_lb_18v'}),
+               #candles.add_func(ma_lines, col='volume', N=15).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_15v', 'EMA': 'ema_15v', 'SMA': 'sma_15v', 'UB': 'boll_ub_15v', 'LB': 'boll_lb_15v'}),
+               #candles.add_func(ma_lines, col='volume', N=18).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_18v', 'EMA': 'ema_18v', 'SMA': 'sma_18v', 'UB': 'boll_ub_18v', 'LB': 'boll_lb_18v'}),
                candles.add_func(ma_lines, col='volume', N=20).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_20v', 'EMA': 'ema_20v', 'SMA': 'sma_20v', 'UB': 'boll_ub_20v', 'LB': 'boll_lb_20v'}),
-               candles.add_func(ma_lines, col='volume', N=21).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_21v', 'EMA': 'ema_21v', 'SMA': 'sma_21v', 'UB': 'boll_ub_21v', 'LB': 'boll_lb_21v'}),
-               candles.add_func(ma_lines, col='volume', N=26).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_26v', 'EMA': 'ema_26v', 'SMA': 'sma_26v', 'UB': 'boll_ub_26v', 'LB': 'boll_lb_26v'}),
+               #candles.add_func(ma_lines, col='volume', N=21).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_21v', 'EMA': 'ema_21v', 'SMA': 'sma_21v', 'UB': 'boll_ub_21v', 'LB': 'boll_lb_21v'}),
+               #candles.add_func(ma_lines, col='volume', N=26).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_26v', 'EMA': 'ema_26v', 'SMA': 'sma_26v', 'UB': 'boll_ub_26v', 'LB': 'boll_lb_26v'}),
                candles.add_func(ma_lines, col='volume', N=30).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_30v', 'EMA': 'ema_30v', 'SMA': 'sma_30v', 'UB': 'boll_ub_30v', 'LB': 'boll_lb_30v'}),
-               candles.add_func(ma_lines, col='volume', N=34).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_34v', 'EMA': 'ema_34v', 'SMA': 'sma_34v', 'UB': 'boll_ub_34v', 'LB': 'boll_lb_34v'}),
-               candles.add_func(ma_lines, col='volume', N=40).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_40v', 'EMA': 'ema_40v', 'SMA': 'sma_40v', 'UB': 'boll_ub_40v', 'LB': 'boll_lb_40v'}),
+               #candles.add_func(ma_lines, col='volume', N=34).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_34v', 'EMA': 'ema_34v', 'SMA': 'sma_34v', 'UB': 'boll_ub_34v', 'LB': 'boll_lb_34v'}),
+               #candles.add_func(ma_lines, col='volume', N=40).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_40v', 'EMA': 'ema_40v', 'SMA': 'sma_40v', 'UB': 'boll_ub_40v', 'LB': 'boll_lb_40v'}),
                candles.add_func(ma_lines, col='volume', N=44).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_44v', 'EMA': 'ema_44v', 'SMA': 'sma_44v', 'UB': 'boll_ub_44v', 'LB': 'boll_lb_44v'}),
-               candles.add_func(ma_lines, col='volume', N=50).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_50v', 'EMA': 'ema_50v', 'SMA': 'sma_50v', 'UB': 'boll_ub_50v', 'LB': 'boll_lb_50v'}),
+               #candles.add_func(ma_lines, col='volume', N=50).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_50v', 'EMA': 'ema_50v', 'SMA': 'sma_50v', 'UB': 'boll_ub_50v', 'LB': 'boll_lb_50v'}),
                candles.add_func(ma_lines, col='volume', N=55).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_55v', 'EMA': 'ema_55v', 'SMA': 'sma_55v', 'UB': 'boll_ub_55v', 'LB': 'boll_lb_55v'}),
                candles.add_func(ma_lines, col='volume', N=60).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_60v', 'EMA': 'ema_60v', 'SMA': 'sma_60v', 'UB': 'boll_ub_60v', 'LB': 'boll_lb_60v'}),
-               candles.add_func(ma_lines, col='volume', N=66).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_66v', 'EMA': 'ema_66v', 'SMA': 'sma_66v', 'UB': 'boll_ub_66v', 'LB': 'boll_lb_66v'}),
+               #candles.add_func(ma_lines, col='volume', N=66).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_66v', 'EMA': 'ema_66v', 'SMA': 'sma_66v', 'UB': 'boll_ub_66v', 'LB': 'boll_lb_66v'}),
                candles.add_func(ma_lines, col='volume', N=89).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_89v', 'EMA': 'ema_89v', 'SMA': 'sma_89v', 'UB': 'boll_ub_89v', 'LB': 'boll_lb_89v'}),
-               candles.add_func(ma_lines, col='volume', N=99).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_99v', 'EMA': 'ema_99v', 'SMA': 'sma_99v', 'UB': 'boll_ub_99v', 'LB': 'boll_lb_99v'}),
+               #candles.add_func(ma_lines, col='volume', N=99).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_99v', 'EMA': 'ema_99v', 'SMA': 'sma_99v', 'UB': 'boll_ub_99v', 'LB': 'boll_lb_99v'}),
                candles.add_func(ma_lines, col='volume', N=120).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_120v', 'EMA': 'ema_120v', 'SMA': 'sma_120v', 'UB': 'boll_ub_120v', 'LB': 'boll_lb_120v'}),
                candles.add_func(ma_lines, col='volume', N=144).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_144v', 'EMA': 'ema_144v', 'SMA': 'sma_144v', 'UB': 'boll_ub_144v', 'LB': 'boll_lb_144v'})]
 
-        ma1 = [candles.add_func(ma_lines, col='c1', N=3).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_3_c1', 'EMA': 'ema_3_c1', 'SMA': 'sma_3_c1', 'UB': 'boll_ub_3_c1', 'LB': 'boll_lb_3_c1'}),
-               candles.add_func(ma_lines, col='c1', N=5).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_5_c1', 'EMA': 'ema_5_c1', 'SMA': 'sma_5_c1', 'UB': 'boll_ub_5_c1', 'LB': 'boll_lb_5_c1'}),
-               candles.add_func(ma_lines, col='c1', N=8).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_8_c1', 'EMA': 'ema_8_c1', 'SMA': 'sma_8_c1', 'UB': 'boll_ub_8_c1', 'LB': 'boll_lb_8_c1'}),
-               candles.add_func(ma_lines, col='c1', N=10).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_10_c1', 'EMA': 'ema_10_c1', 'SMA': 'sma_10_c1', 'UB': 'boll_ub_10_c1', 'LB': 'boll_lb_10_c1'}),
-               candles.add_func(ma_lines, col='c1', N=13).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_13_c1', 'EMA': 'ema_13_c1', 'SMA': 'sma_13_c1', 'UB': 'boll_ub_13_c1', 'LB': 'boll_lb_13_c1'}),
-               candles.add_func(ma_lines, col='c1', N=15).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_15_c1', 'EMA': 'ema_15_c1', 'SMA': 'sma_15_c1', 'UB': 'boll_ub_15_c1', 'LB': 'boll_lb_15_c1'}),
-               candles.add_func(ma_lines, col='c1', N=18).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_18_c1', 'EMA': 'ema_18_c1', 'SMA': 'sma_18_c1', 'UB': 'boll_ub_18_c1', 'LB': 'boll_lb_18_c1'}),
-               candles.add_func(ma_lines, col='c1', N=20).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_20_c1', 'EMA': 'ema_20_c1', 'SMA': 'sma_20_c1', 'UB': 'boll_ub_20_c1', 'LB': 'boll_lb_20_c1'}),
-               candles.add_func(ma_lines, col='c1', N=21).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_21_c1', 'EMA': 'ema_21_c1', 'SMA': 'sma_21_c1', 'UB': 'boll_ub_21_c1', 'LB': 'boll_lb_21_c1'}),
-               candles.add_func(ma_lines, col='c1', N=26).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_26_c1', 'EMA': 'ema_26_c1', 'SMA': 'sma_26_c1', 'UB': 'boll_ub_26_c1', 'LB': 'boll_lb_26_c1'}),
-               candles.add_func(ma_lines, col='c1', N=30).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_30_c1', 'EMA': 'ema_30_c1', 'SMA': 'sma_30_c1', 'UB': 'boll_ub_30_c1', 'LB': 'boll_lb_30_c1'}),
-               candles.add_func(ma_lines, col='c1', N=34).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_34_c1', 'EMA': 'ema_34_c1', 'SMA': 'sma_34_c1', 'UB': 'boll_ub_34_c1', 'LB': 'boll_lb_34_c1'}),
-               candles.add_func(ma_lines, col='c1', N=40).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_40_c1', 'EMA': 'ema_40_c1', 'SMA': 'sma_40_c1', 'UB': 'boll_ub_40_c1', 'LB': 'boll_lb_40_c1'}),
-               candles.add_func(ma_lines, col='c1', N=44).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_44_c1', 'EMA': 'ema_44_c1', 'SMA': 'sma_44_c1', 'UB': 'boll_ub_44_c1', 'LB': 'boll_lb_44_c1'}),
-               candles.add_func(ma_lines, col='c1', N=50).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_50_c1', 'EMA': 'ema_50_c1', 'SMA': 'sma_50_c1', 'UB': 'boll_ub_50_c1', 'LB': 'boll_lb_50_c1'}),
-               candles.add_func(ma_lines, col='c1', N=55).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_55_c1', 'EMA': 'ema_55_c1', 'SMA': 'sma_55_c1', 'UB': 'boll_ub_55_c1', 'LB': 'boll_lb_55_c1'}),
-               candles.add_func(ma_lines, col='c1', N=60).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_60_c1', 'EMA': 'ema_60_c1', 'SMA': 'sma_60_c1', 'UB': 'boll_ub_60_c1', 'LB': 'boll_lb_60_c1'}),
-               candles.add_func(ma_lines, col='c1', N=66).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_66_c1', 'EMA': 'ema_66_c1', 'SMA': 'sma_66_c1', 'UB': 'boll_ub_66_c1', 'LB': 'boll_lb_66_c1'}),
-               candles.add_func(ma_lines, col='c1', N=89).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_89_c1', 'EMA': 'ema_89_c1', 'SMA': 'sma_89_c1', 'UB': 'boll_ub_89_c1', 'LB': 'boll_lb_89_c1'}),
-               candles.add_func(ma_lines, col='c1', N=99).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_99_c1', 'EMA': 'ema_99_c1', 'SMA': 'sma_99_c1', 'UB': 'boll_ub_99_c1', 'LB': 'boll_lb_99_c1'}),
-               candles.add_func(ma_lines, col='c1', N=120).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_120_c1', 'EMA': 'ema_120_c1', 'SMA': 'sma_120_c1', 'UB': 'boll_ub_120_c1', 'LB': 'boll_lb_120_c1'}),
-               candles.add_func(ma_lines, col='c1', N=144).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_144_c1', 'EMA': 'ema_144_c1', 'SMA': 'sma_144_c1', 'UB': 'boll_ub_144_c1', 'LB': 'boll_lb_144_c1'})]
+        # ma1 = [#candles.add_func(ma_lines, col='c1', N=3).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_3_c1', 'EMA': 'ema_3_c1', 'SMA': 'sma_3_c1', 'UB': 'boll_ub_3_c1', 'LB': 'boll_lb_3_c1'}),
+        #        candles.add_func(ma_lines, col='c1', N=5).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_5_c1', 'EMA': 'ema_5_c1', 'SMA': 'sma_5_c1', 'UB': 'boll_ub_5_c1', 'LB': 'boll_lb_5_c1'}),
+        #        #candles.add_func(ma_lines, col='c1', N=8).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_8_c1', 'EMA': 'ema_8_c1', 'SMA': 'sma_8_c1', 'UB': 'boll_ub_8_c1', 'LB': 'boll_lb_8_c1'}),
+        #        candles.add_func(ma_lines, col='c1', N=10).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_10_c1', 'EMA': 'ema_10_c1', 'SMA': 'sma_10_c1', 'UB': 'boll_ub_10_c1', 'LB': 'boll_lb_10_c1'}),
+        #        candles.add_func(ma_lines, col='c1', N=13).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_13_c1', 'EMA': 'ema_13_c1', 'SMA': 'sma_13_c1', 'UB': 'boll_ub_13_c1', 'LB': 'boll_lb_13_c1'}),
+        #        #candles.add_func(ma_lines, col='c1', N=15).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_15_c1', 'EMA': 'ema_15_c1', 'SMA': 'sma_15_c1', 'UB': 'boll_ub_15_c1', 'LB': 'boll_lb_15_c1'}),
+        #        #candles.add_func(ma_lines, col='c1', N=18).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_18_c1', 'EMA': 'ema_18_c1', 'SMA': 'sma_18_c1', 'UB': 'boll_ub_18_c1', 'LB': 'boll_lb_18_c1'}),
+        #        candles.add_func(ma_lines, col='c1', N=20).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_20_c1', 'EMA': 'ema_20_c1', 'SMA': 'sma_20_c1', 'UB': 'boll_ub_20_c1', 'LB': 'boll_lb_20_c1'}),
+        #        #candles.add_func(ma_lines, col='c1', N=21).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_21_c1', 'EMA': 'ema_21_c1', 'SMA': 'sma_21_c1', 'UB': 'boll_ub_21_c1', 'LB': 'boll_lb_21_c1'}),
+        #        #candles.add_func(ma_lines, col='c1', N=26).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_26_c1', 'EMA': 'ema_26_c1', 'SMA': 'sma_26_c1', 'UB': 'boll_ub_26_c1', 'LB': 'boll_lb_26_c1'}),
+        #        candles.add_func(ma_lines, col='c1', N=30).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_30_c1', 'EMA': 'ema_30_c1', 'SMA': 'sma_30_c1', 'UB': 'boll_ub_30_c1', 'LB': 'boll_lb_30_c1'}),
+        #        #candles.add_func(ma_lines, col='c1', N=34).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_34_c1', 'EMA': 'ema_34_c1', 'SMA': 'sma_34_c1', 'UB': 'boll_ub_34_c1', 'LB': 'boll_lb_34_c1'}),
+        #        #candles.add_func(ma_lines, col='c1', N=40).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_40_c1', 'EMA': 'ema_40_c1', 'SMA': 'sma_40_c1', 'UB': 'boll_ub_40_c1', 'LB': 'boll_lb_40_c1'}),
+        #        candles.add_func(ma_lines, col='c1', N=44).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_44_c1', 'EMA': 'ema_44_c1', 'SMA': 'sma_44_c1', 'UB': 'boll_ub_44_c1', 'LB': 'boll_lb_44_c1'}),
+        #        #candles.add_func(ma_lines, col='c1', N=50).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_50_c1', 'EMA': 'ema_50_c1', 'SMA': 'sma_50_c1', 'UB': 'boll_ub_50_c1', 'LB': 'boll_lb_50_c1'}),
+        #        candles.add_func(ma_lines, col='c1', N=55).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_55_c1', 'EMA': 'ema_55_c1', 'SMA': 'sma_55_c1', 'UB': 'boll_ub_55_c1', 'LB': 'boll_lb_55_c1'}),
+        #        candles.add_func(ma_lines, col='c1', N=60).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_60_c1', 'EMA': 'ema_60_c1', 'SMA': 'sma_60_c1', 'UB': 'boll_ub_60_c1', 'LB': 'boll_lb_60_c1'}),
+        #        #candles.add_func(ma_lines, col='c1', N=66).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_66_c1', 'EMA': 'ema_66_c1', 'SMA': 'sma_66_c1', 'UB': 'boll_ub_66_c1', 'LB': 'boll_lb_66_c1'}),
+        #        candles.add_func(ma_lines, col='c1', N=89).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_89_c1', 'EMA': 'ema_89_c1', 'SMA': 'sma_89_c1', 'UB': 'boll_ub_89_c1', 'LB': 'boll_lb_89_c1'}),
+        #        #candles.add_func(ma_lines, col='c1', N=99).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_99_c1', 'EMA': 'ema_99_c1', 'SMA': 'sma_99_c1', 'UB': 'boll_ub_99_c1', 'LB': 'boll_lb_99_c1'}),
+        #        candles.add_func(ma_lines, col='c1', N=120).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_120_c1', 'EMA': 'ema_120_c1', 'SMA': 'sma_120_c1', 'UB': 'boll_ub_120_c1', 'LB': 'boll_lb_120_c1'}),
+        #        candles.add_func(ma_lines, col='c1', N=144).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_144_c1', 'EMA': 'ema_144_c1', 'SMA': 'sma_144_c1', 'UB': 'boll_ub_144_c1', 'LB': 'boll_lb_144_c1'})]
 
-        ma2 = [candles.add_func(ma_lines, col='c2', N=3).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_3_c2', 'EMA': 'ema_3_c2', 'SMA': 'sma_3_c2', 'UB': 'boll_ub_3_c2', 'LB': 'boll_lb_3_c2'}),
+        ma2 = [#candles.add_func(ma_lines, col='c2', N=3).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_3_c2', 'EMA': 'ema_3_c2', 'SMA': 'sma_3_c2', 'UB': 'boll_ub_3_c2', 'LB': 'boll_lb_3_c2'}),
                candles.add_func(ma_lines, col='c2', N=5).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_5_c2', 'EMA': 'ema_5_c2', 'SMA': 'sma_5_c2', 'UB': 'boll_ub_5_c2', 'LB': 'boll_lb_5_c2'}),
-               candles.add_func(ma_lines, col='c2', N=8).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_8_c2', 'EMA': 'ema_8_c2', 'SMA': 'sma_8_c2', 'UB': 'boll_ub_8_c2', 'LB': 'boll_lb_8_c2'}),
+               #candles.add_func(ma_lines, col='c2', N=8).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_8_c2', 'EMA': 'ema_8_c2', 'SMA': 'sma_8_c2', 'UB': 'boll_ub_8_c2', 'LB': 'boll_lb_8_c2'}),
                candles.add_func(ma_lines, col='c2', N=10).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_10_c2', 'EMA': 'ema_10_c2', 'SMA': 'sma_10_c2', 'UB': 'boll_ub_10_c2', 'LB': 'boll_lb_10_c2'}),
                candles.add_func(ma_lines, col='c2', N=13).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_13_c2', 'EMA': 'ema_13_c2', 'SMA': 'sma_13_c2', 'UB': 'boll_ub_13_c2', 'LB': 'boll_lb_13_c2'}),
-               candles.add_func(ma_lines, col='c2', N=15).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_15_c2', 'EMA': 'ema_15_c2', 'SMA': 'sma_15_c2', 'UB': 'boll_ub_15_c2', 'LB': 'boll_lb_15_c2'}),
-               candles.add_func(ma_lines, col='c2', N=18).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_18_c2', 'EMA': 'ema_18_c2', 'SMA': 'sma_18_c2', 'UB': 'boll_ub_18_c2', 'LB': 'boll_lb_18_c2'}),
+               #candles.add_func(ma_lines, col='c2', N=15).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_15_c2', 'EMA': 'ema_15_c2', 'SMA': 'sma_15_c2', 'UB': 'boll_ub_15_c2', 'LB': 'boll_lb_15_c2'}),
+               #candles.add_func(ma_lines, col='c2', N=18).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_18_c2', 'EMA': 'ema_18_c2', 'SMA': 'sma_18_c2', 'UB': 'boll_ub_18_c2', 'LB': 'boll_lb_18_c2'}),
                candles.add_func(ma_lines, col='c2', N=20).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_20_c2', 'EMA': 'ema_20_c2', 'SMA': 'sma_20_c2', 'UB': 'boll_ub_20_c2', 'LB': 'boll_lb_20_c2'}),
-               candles.add_func(ma_lines, col='c2', N=21).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_21_c2', 'EMA': 'ema_21_c2', 'SMA': 'sma_21_c2', 'UB': 'boll_ub_21_c2', 'LB': 'boll_lb_21_c2'}),
-               candles.add_func(ma_lines, col='c2', N=26).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_26_c2', 'EMA': 'ema_26_c2', 'SMA': 'sma_26_c2', 'UB': 'boll_ub_26_c2', 'LB': 'boll_lb_26_c2'}),
+               #candles.add_func(ma_lines, col='c2', N=21).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_21_c2', 'EMA': 'ema_21_c2', 'SMA': 'sma_21_c2', 'UB': 'boll_ub_21_c2', 'LB': 'boll_lb_21_c2'}),
+               #candles.add_func(ma_lines, col='c2', N=26).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_26_c2', 'EMA': 'ema_26_c2', 'SMA': 'sma_26_c2', 'UB': 'boll_ub_26_c2', 'LB': 'boll_lb_26_c2'}),
                candles.add_func(ma_lines, col='c2', N=30).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_30_c2', 'EMA': 'ema_30_c2', 'SMA': 'sma_30_c2', 'UB': 'boll_ub_30_c2', 'LB': 'boll_lb_30_c2'}),
-               candles.add_func(ma_lines, col='c2', N=34).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_34_c2', 'EMA': 'ema_34_c2', 'SMA': 'sma_34_c2', 'UB': 'boll_ub_34_c2', 'LB': 'boll_lb_34_c2'}),
-               candles.add_func(ma_lines, col='c2', N=40).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_40_c2', 'EMA': 'ema_40_c2', 'SMA': 'sma_40_c2', 'UB': 'boll_ub_40_c2', 'LB': 'boll_lb_40_c2'}),
+               #candles.add_func(ma_lines, col='c2', N=34).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_34_c2', 'EMA': 'ema_34_c2', 'SMA': 'sma_34_c2', 'UB': 'boll_ub_34_c2', 'LB': 'boll_lb_34_c2'}),
+               #candles.add_func(ma_lines, col='c2', N=40).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_40_c2', 'EMA': 'ema_40_c2', 'SMA': 'sma_40_c2', 'UB': 'boll_ub_40_c2', 'LB': 'boll_lb_40_c2'}),
                candles.add_func(ma_lines, col='c2', N=44).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_44_c2', 'EMA': 'ema_44_c2', 'SMA': 'sma_44_c2', 'UB': 'boll_ub_44_c2', 'LB': 'boll_lb_44_c2'}),
-               candles.add_func(ma_lines, col='c2', N=50).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_50_c2', 'EMA': 'ema_50_c2', 'SMA': 'sma_50_c2', 'UB': 'boll_ub_50_c2', 'LB': 'boll_lb_50_c2'}),
+               #candles.add_func(ma_lines, col='c2', N=50).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_50_c2', 'EMA': 'ema_50_c2', 'SMA': 'sma_50_c2', 'UB': 'boll_ub_50_c2', 'LB': 'boll_lb_50_c2'}),
                candles.add_func(ma_lines, col='c2', N=55).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_55_c2', 'EMA': 'ema_55_c2', 'SMA': 'sma_55_c2', 'UB': 'boll_ub_55_c2', 'LB': 'boll_lb_55_c2'}),
                candles.add_func(ma_lines, col='c2', N=60).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_60_c2', 'EMA': 'ema_60_c2', 'SMA': 'sma_60_c2', 'UB': 'boll_ub_60_c2', 'LB': 'boll_lb_60_c2'}),
-               candles.add_func(ma_lines, col='c2', N=66).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_66_c2', 'EMA': 'ema_66_c2', 'SMA': 'sma_66_c2', 'UB': 'boll_ub_66_c2', 'LB': 'boll_lb_66_c2'}),
+               #candles.add_func(ma_lines, col='c2', N=66).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_66_c2', 'EMA': 'ema_66_c2', 'SMA': 'sma_66_c2', 'UB': 'boll_ub_66_c2', 'LB': 'boll_lb_66_c2'}),
                candles.add_func(ma_lines, col='c2', N=89).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_89_c2', 'EMA': 'ema_89_c2', 'SMA': 'sma_89_c2', 'UB': 'boll_ub_89_c2', 'LB': 'boll_lb_89_c2'}),
-               candles.add_func(ma_lines, col='c2', N=99).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_99_c2', 'EMA': 'ema_99_c2', 'SMA': 'sma_99_c2', 'UB': 'boll_ub_99_c2', 'LB': 'boll_lb_99_c2'}),
+               #candles.add_func(ma_lines, col='c2', N=99).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_99_c2', 'EMA': 'ema_99_c2', 'SMA': 'sma_99_c2', 'UB': 'boll_ub_99_c2', 'LB': 'boll_lb_99_c2'}),
                candles.add_func(ma_lines, col='c2', N=120).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_120_c2', 'EMA': 'ema_120_c2', 'SMA': 'sma_120_c2', 'UB': 'boll_ub_120_c2', 'LB': 'boll_lb_120_c2'}),
                candles.add_func(ma_lines, col='c2', N=144).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_144_c2', 'EMA': 'ema_144_c2', 'SMA': 'sma_144_c2', 'UB': 'boll_ub_144_c2', 'LB': 'boll_lb_144_c2'})]
 
-        ma3 = [candles.add_func(ma_lines, col='c3', N=3).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_3_c3', 'EMA': 'ema_3_c3', 'SMA': 'sma_3_c3', 'UB': 'boll_ub_3_c3', 'LB': 'boll_lb_3_c3'}),
-               candles.add_func(ma_lines, col='c3', N=5).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_5_c3', 'EMA': 'ema_5_c3', 'SMA': 'sma_5_c3', 'UB': 'boll_ub_5_c3', 'LB': 'boll_lb_5_c3'}),
-               candles.add_func(ma_lines, col='c3', N=8).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_8_c3', 'EMA': 'ema_8_c3', 'SMA': 'sma_8_c3', 'UB': 'boll_ub_8_c3', 'LB': 'boll_lb_8_c3'}),
-               candles.add_func(ma_lines, col='c3', N=10).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_10_c3', 'EMA': 'ema_10_c3', 'SMA': 'sma_10_c3', 'UB': 'boll_ub_10_c3', 'LB': 'boll_lb_10_c3'}),
-               candles.add_func(ma_lines, col='c3', N=13).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_13_c3', 'EMA': 'ema_13_c3', 'SMA': 'sma_13_c3', 'UB': 'boll_ub_13_c3', 'LB': 'boll_lb_13_c3'}),
-               candles.add_func(ma_lines, col='c3', N=15).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_15_c3', 'EMA': 'ema_15_c3', 'SMA': 'sma_15_c3', 'UB': 'boll_ub_15_c3', 'LB': 'boll_lb_15_c3'}),
-               candles.add_func(ma_lines, col='c3', N=18).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_18_c3', 'EMA': 'ema_18_c3', 'SMA': 'sma_18_c3', 'UB': 'boll_ub_18_c3', 'LB': 'boll_lb_18_c3'}),
-               candles.add_func(ma_lines, col='c3', N=20).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_20_c3', 'EMA': 'ema_20_c3', 'SMA': 'sma_20_c3', 'UB': 'boll_ub_20_c3', 'LB': 'boll_lb_20_c3'}),
-               candles.add_func(ma_lines, col='c3', N=21).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_21_c3', 'EMA': 'ema_21_c3', 'SMA': 'sma_21_c3', 'UB': 'boll_ub_21_c3', 'LB': 'boll_lb_21_c3'}),
-               candles.add_func(ma_lines, col='c3', N=26).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_26_c3', 'EMA': 'ema_26_c3', 'SMA': 'sma_26_c3', 'UB': 'boll_ub_26_c3', 'LB': 'boll_lb_26_c3'}),
-               candles.add_func(ma_lines, col='c3', N=30).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_30_c3', 'EMA': 'ema_30_c3', 'SMA': 'sma_30_c3', 'UB': 'boll_ub_30_c3', 'LB': 'boll_lb_30_c3'}),
-               candles.add_func(ma_lines, col='c3', N=34).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_34_c3', 'EMA': 'ema_34_c3', 'SMA': 'sma_34_c3', 'UB': 'boll_ub_34_c3', 'LB': 'boll_lb_34_c3'}),
-               candles.add_func(ma_lines, col='c3', N=40).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_40_c3', 'EMA': 'ema_40_c3', 'SMA': 'sma_40_c3', 'UB': 'boll_ub_40_c3', 'LB': 'boll_lb_40_c3'}),
-               candles.add_func(ma_lines, col='c3', N=44).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_44_c3', 'EMA': 'ema_44_c3', 'SMA': 'sma_44_c3', 'UB': 'boll_ub_44_c3', 'LB': 'boll_lb_44_c3'}),
-               candles.add_func(ma_lines, col='c3', N=50).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_50_c3', 'EMA': 'ema_50_c3', 'SMA': 'sma_50_c3', 'UB': 'boll_ub_50_c3', 'LB': 'boll_lb_50_c3'}),
-               candles.add_func(ma_lines, col='c3', N=55).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_55_c3', 'EMA': 'ema_55_c3', 'SMA': 'sma_55_c3', 'UB': 'boll_ub_55_c3', 'LB': 'boll_lb_55_c3'}),
-               candles.add_func(ma_lines, col='c3', N=60).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_60_c3', 'EMA': 'ema_60_c3', 'SMA': 'sma_60_c3', 'UB': 'boll_ub_60_c3', 'LB': 'boll_lb_60_c3'}),
-               candles.add_func(ma_lines, col='c3', N=66).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_66_c3', 'EMA': 'ema_66_c3', 'SMA': 'sma_66_c3', 'UB': 'boll_ub_66_c3', 'LB': 'boll_lb_66_c3'}),
-               candles.add_func(ma_lines, col='c3', N=89).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_89_c3', 'EMA': 'ema_89_c3', 'SMA': 'sma_89_c3', 'UB': 'boll_ub_89_c3', 'LB': 'boll_lb_89_c3'}),
-               candles.add_func(ma_lines, col='c3', N=99).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_99_c3', 'EMA': 'ema_99_c3', 'SMA': 'sma_99_c3', 'UB': 'boll_ub_99_c3', 'LB': 'boll_lb_99_c3'}),
-               candles.add_func(ma_lines, col='c3', N=120).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_120_c3', 'EMA': 'ema_120_c3', 'SMA': 'sma_120_c3', 'UB': 'boll_ub_120_c3', 'LB': 'boll_lb_120_c3'}),
-               candles.add_func(ma_lines, col='c3', N=144).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_144_c3', 'EMA': 'ema_144_c3', 'SMA': 'sma_144_c3', 'UB': 'boll_ub_144_c3', 'LB': 'boll_lb_144_c3'})]
+        # ma3 = [#candles.add_func(ma_lines, col='c3', N=3).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_3_c3', 'EMA': 'ema_3_c3', 'SMA': 'sma_3_c3', 'UB': 'boll_ub_3_c3', 'LB': 'boll_lb_3_c3'}),
+        #        candles.add_func(ma_lines, col='c3', N=5).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_5_c3', 'EMA': 'ema_5_c3', 'SMA': 'sma_5_c3', 'UB': 'boll_ub_5_c3', 'LB': 'boll_lb_5_c3'}),
+        #        #candles.add_func(ma_lines, col='c3', N=8).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_8_c3', 'EMA': 'ema_8_c3', 'SMA': 'sma_8_c3', 'UB': 'boll_ub_8_c3', 'LB': 'boll_lb_8_c3'}),
+        #        candles.add_func(ma_lines, col='c3', N=10).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_10_c3', 'EMA': 'ema_10_c3', 'SMA': 'sma_10_c3', 'UB': 'boll_ub_10_c3', 'LB': 'boll_lb_10_c3'}),
+        #        candles.add_func(ma_lines, col='c3', N=13).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_13_c3', 'EMA': 'ema_13_c3', 'SMA': 'sma_13_c3', 'UB': 'boll_ub_13_c3', 'LB': 'boll_lb_13_c3'}),
+        #        #candles.add_func(ma_lines, col='c3', N=15).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_15_c3', 'EMA': 'ema_15_c3', 'SMA': 'sma_15_c3', 'UB': 'boll_ub_15_c3', 'LB': 'boll_lb_15_c3'}),
+        #        #candles.add_func(ma_lines, col='c3', N=18).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_18_c3', 'EMA': 'ema_18_c3', 'SMA': 'sma_18_c3', 'UB': 'boll_ub_18_c3', 'LB': 'boll_lb_18_c3'}),
+        #        candles.add_func(ma_lines, col='c3', N=20).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_20_c3', 'EMA': 'ema_20_c3', 'SMA': 'sma_20_c3', 'UB': 'boll_ub_20_c3', 'LB': 'boll_lb_20_c3'}),
+        #        #candles.add_func(ma_lines, col='c3', N=21).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_21_c3', 'EMA': 'ema_21_c3', 'SMA': 'sma_21_c3', 'UB': 'boll_ub_21_c3', 'LB': 'boll_lb_21_c3'}),
+        #        #candles.add_func(ma_lines, col='c3', N=26).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_26_c3', 'EMA': 'ema_26_c3', 'SMA': 'sma_26_c3', 'UB': 'boll_ub_26_c3', 'LB': 'boll_lb_26_c3'}),
+        #        candles.add_func(ma_lines, col='c3', N=30).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_30_c3', 'EMA': 'ema_30_c3', 'SMA': 'sma_30_c3', 'UB': 'boll_ub_30_c3', 'LB': 'boll_lb_30_c3'}),
+        #        #candles.add_func(ma_lines, col='c3', N=34).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_34_c3', 'EMA': 'ema_34_c3', 'SMA': 'sma_34_c3', 'UB': 'boll_ub_34_c3', 'LB': 'boll_lb_34_c3'}),
+        #        #candles.add_func(ma_lines, col='c3', N=40).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_40_c3', 'EMA': 'ema_40_c3', 'SMA': 'sma_40_c3', 'UB': 'boll_ub_40_c3', 'LB': 'boll_lb_40_c3'}),
+        #        candles.add_func(ma_lines, col='c3', N=44).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_44_c3', 'EMA': 'ema_44_c3', 'SMA': 'sma_44_c3', 'UB': 'boll_ub_44_c3', 'LB': 'boll_lb_44_c3'}),
+        #        #candles.add_func(ma_lines, col='c3', N=50).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_50_c3', 'EMA': 'ema_50_c3', 'SMA': 'sma_50_c3', 'UB': 'boll_ub_50_c3', 'LB': 'boll_lb_50_c3'}),
+        #        candles.add_func(ma_lines, col='c3', N=55).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_55_c3', 'EMA': 'ema_55_c3', 'SMA': 'sma_55_c3', 'UB': 'boll_ub_55_c3', 'LB': 'boll_lb_55_c3'}),
+        #        candles.add_func(ma_lines, col='c3', N=60).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_60_c3', 'EMA': 'ema_60_c3', 'SMA': 'sma_60_c3', 'UB': 'boll_ub_60_c3', 'LB': 'boll_lb_60_c3'}),
+        #        #candles.add_func(ma_lines, col='c3', N=66).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_66_c3', 'EMA': 'ema_66_c3', 'SMA': 'sma_66_c3', 'UB': 'boll_ub_66_c3', 'LB': 'boll_lb_66_c3'}),
+        #        candles.add_func(ma_lines, col='c3', N=89).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_89_c3', 'EMA': 'ema_89_c3', 'SMA': 'sma_89_c3', 'UB': 'boll_ub_89_c3', 'LB': 'boll_lb_89_c3'}),
+        #        #candles.add_func(ma_lines, col='c3', N=99).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_99_c3', 'EMA': 'ema_99_c3', 'SMA': 'sma_99_c3', 'UB': 'boll_ub_99_c3', 'LB': 'boll_lb_99_c3'}),
+        #        candles.add_func(ma_lines, col='c3', N=120).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_120_c3', 'EMA': 'ema_120_c3', 'SMA': 'sma_120_c3', 'UB': 'boll_ub_120_c3', 'LB': 'boll_lb_120_c3'}),
+        #        candles.add_func(ma_lines, col='c3', N=144).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_144_c3', 'EMA': 'ema_144_c3', 'SMA': 'sma_144_c3', 'UB': 'boll_ub_144_c3', 'LB': 'boll_lb_144_c3'})]
 
-        macho = [candles.add_func(ma_lines, col='cho', N=3).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_3_cho', 'EMA': 'ema_3_cho', 'SMA': 'sma_3_cho', 'UB': 'boll_ub_3_cho', 'LB': 'boll_lb_3_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=5).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_5_cho', 'EMA': 'ema_5_cho', 'SMA': 'sma_5_cho', 'UB': 'boll_ub_5_cho', 'LB': 'boll_lb_5_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=8).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_8_cho', 'EMA': 'ema_8_cho', 'SMA': 'sma_8_cho', 'UB': 'boll_ub_8_cho', 'LB': 'boll_lb_8_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=10).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_10_cho', 'EMA': 'ema_10_cho', 'SMA': 'sma_10_cho', 'UB': 'boll_ub_10_cho', 'LB': 'boll_lb_10_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=13).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_13_cho', 'EMA': 'ema_13_cho', 'SMA': 'sma_13_cho', 'UB': 'boll_ub_13_cho', 'LB': 'boll_lb_13_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=15).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_15_cho', 'EMA': 'ema_15_cho', 'SMA': 'sma_15_cho', 'UB': 'boll_ub_15_cho', 'LB': 'boll_lb_15_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=18).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_18_cho', 'EMA': 'ema_18_cho', 'SMA': 'sma_18_cho', 'UB': 'boll_ub_18_cho', 'LB': 'boll_lb_18_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=20).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_20_cho', 'EMA': 'ema_20_cho', 'SMA': 'sma_20_cho', 'UB': 'boll_ub_20_cho', 'LB': 'boll_lb_20_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=21).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_21_cho', 'EMA': 'ema_21_cho', 'SMA': 'sma_21_cho', 'UB': 'boll_ub_21_cho', 'LB': 'boll_lb_21_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=26).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_26_cho', 'EMA': 'ema_26_cho', 'SMA': 'sma_26_cho', 'UB': 'boll_ub_26_cho', 'LB': 'boll_lb_26_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=30).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_30_cho', 'EMA': 'ema_30_cho', 'SMA': 'sma_30_cho', 'UB': 'boll_ub_30_cho', 'LB': 'boll_lb_30_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=34).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_34_cho', 'EMA': 'ema_34_cho', 'SMA': 'sma_34_cho', 'UB': 'boll_ub_34_cho', 'LB': 'boll_lb_34_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=40).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_40_cho', 'EMA': 'ema_40_cho', 'SMA': 'sma_40_cho', 'UB': 'boll_ub_40_cho', 'LB': 'boll_lb_40_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=44).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_44_cho', 'EMA': 'ema_44_cho', 'SMA': 'sma_44_cho', 'UB': 'boll_ub_44_cho', 'LB': 'boll_lb_44_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=50).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_50_cho', 'EMA': 'ema_50_cho', 'SMA': 'sma_50_cho', 'UB': 'boll_ub_50_cho', 'LB': 'boll_lb_50_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=55).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_55_cho', 'EMA': 'ema_55_cho', 'SMA': 'sma_55_cho', 'UB': 'boll_ub_55_cho', 'LB': 'boll_lb_55_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=60).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_60_cho', 'EMA': 'ema_60_cho', 'SMA': 'sma_60_cho', 'UB': 'boll_ub_60_cho', 'LB': 'boll_lb_60_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=66).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_66_cho', 'EMA': 'ema_66_cho', 'SMA': 'sma_66_cho', 'UB': 'boll_ub_66_cho', 'LB': 'boll_lb_66_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=89).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_89_cho', 'EMA': 'ema_89_cho', 'SMA': 'sma_89_cho', 'UB': 'boll_ub_89_cho', 'LB': 'boll_lb_89_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=99).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_99_cho', 'EMA': 'ema_99_cho', 'SMA': 'sma_99_cho', 'UB': 'boll_ub_99_cho', 'LB': 'boll_lb_99_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=120).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_120_cho', 'EMA': 'ema_120_cho', 'SMA': 'sma_120_cho', 'UB': 'boll_ub_120_cho', 'LB': 'boll_lb_120_cho'}),
-                 candles.add_func(ma_lines, col='cho', N=144).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_144_cho', 'EMA': 'ema_144_cho', 'SMA': 'sma_144_cho', 'UB': 'boll_ub_144_cho', 'LB': 'boll_lb_144_cho'})]
+        # macho = [candles.add_func(ma_lines, col='cho', N=3).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_3_cho', 'EMA': 'ema_3_cho', 'SMA': 'sma_3_cho', 'UB': 'boll_ub_3_cho', 'LB': 'boll_lb_3_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=5).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_5_cho', 'EMA': 'ema_5_cho', 'SMA': 'sma_5_cho', 'UB': 'boll_ub_5_cho', 'LB': 'boll_lb_5_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=8).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_8_cho', 'EMA': 'ema_8_cho', 'SMA': 'sma_8_cho', 'UB': 'boll_ub_8_cho', 'LB': 'boll_lb_8_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=10).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_10_cho', 'EMA': 'ema_10_cho', 'SMA': 'sma_10_cho', 'UB': 'boll_ub_10_cho', 'LB': 'boll_lb_10_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=13).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_13_cho', 'EMA': 'ema_13_cho', 'SMA': 'sma_13_cho', 'UB': 'boll_ub_13_cho', 'LB': 'boll_lb_13_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=15).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_15_cho', 'EMA': 'ema_15_cho', 'SMA': 'sma_15_cho', 'UB': 'boll_ub_15_cho', 'LB': 'boll_lb_15_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=18).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_18_cho', 'EMA': 'ema_18_cho', 'SMA': 'sma_18_cho', 'UB': 'boll_ub_18_cho', 'LB': 'boll_lb_18_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=20).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_20_cho', 'EMA': 'ema_20_cho', 'SMA': 'sma_20_cho', 'UB': 'boll_ub_20_cho', 'LB': 'boll_lb_20_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=21).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_21_cho', 'EMA': 'ema_21_cho', 'SMA': 'sma_21_cho', 'UB': 'boll_ub_21_cho', 'LB': 'boll_lb_21_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=26).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_26_cho', 'EMA': 'ema_26_cho', 'SMA': 'sma_26_cho', 'UB': 'boll_ub_26_cho', 'LB': 'boll_lb_26_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=30).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_30_cho', 'EMA': 'ema_30_cho', 'SMA': 'sma_30_cho', 'UB': 'boll_ub_30_cho', 'LB': 'boll_lb_30_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=34).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_34_cho', 'EMA': 'ema_34_cho', 'SMA': 'sma_34_cho', 'UB': 'boll_ub_34_cho', 'LB': 'boll_lb_34_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=40).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_40_cho', 'EMA': 'ema_40_cho', 'SMA': 'sma_40_cho', 'UB': 'boll_ub_40_cho', 'LB': 'boll_lb_40_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=44).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_44_cho', 'EMA': 'ema_44_cho', 'SMA': 'sma_44_cho', 'UB': 'boll_ub_44_cho', 'LB': 'boll_lb_44_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=50).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_50_cho', 'EMA': 'ema_50_cho', 'SMA': 'sma_50_cho', 'UB': 'boll_ub_50_cho', 'LB': 'boll_lb_50_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=55).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_55_cho', 'EMA': 'ema_55_cho', 'SMA': 'sma_55_cho', 'UB': 'boll_ub_55_cho', 'LB': 'boll_lb_55_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=60).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_60_cho', 'EMA': 'ema_60_cho', 'SMA': 'sma_60_cho', 'UB': 'boll_ub_60_cho', 'LB': 'boll_lb_60_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=66).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_66_cho', 'EMA': 'ema_66_cho', 'SMA': 'sma_66_cho', 'UB': 'boll_ub_66_cho', 'LB': 'boll_lb_66_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=89).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_89_cho', 'EMA': 'ema_89_cho', 'SMA': 'sma_89_cho', 'UB': 'boll_ub_89_cho', 'LB': 'boll_lb_89_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=99).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_99_cho', 'EMA': 'ema_99_cho', 'SMA': 'sma_99_cho', 'UB': 'boll_ub_99_cho', 'LB': 'boll_lb_99_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=120).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_120_cho', 'EMA': 'ema_120_cho', 'SMA': 'sma_120_cho', 'UB': 'boll_ub_120_cho', 'LB': 'boll_lb_120_cho'}),
+        #          candles.add_func(ma_lines, col='cho', N=144).loc[:, ['MA', 'EMA', 'SMA', 'UB', 'LB']].rename(columns={'MA': 'ma_144_cho', 'EMA': 'ema_144_cho', 'SMA': 'sma_144_cho', 'UB': 'boll_ub_144_cho', 'LB': 'boll_lb_144_cho'})]
 
-        line = pd.concat(ma + ma1 + ma2 + ma3 + vma + macho + mtm + cci + macd + kdj + skdj + dmi + adtm + vols + pr + asi, axis=1)
+        line = pd.concat(ma + ma2 + vma + mtm + cci + macd + kdj + skdj + dmi + adtm + vols + pr + asi + stt + srsi, axis=1)
         delta = line / (line.shift(1).fillna(0.0) + 0.0000001)
         sec_deriv = delta / (delta.shift(1).fillna(0.0) + 0.0000001)
 
